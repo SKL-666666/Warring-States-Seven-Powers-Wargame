@@ -42,8 +42,8 @@
     position: relative; z-index: 2;
     display: grid;
     grid-template-rows: 56px 1fr;
-    grid-template-columns: 1fr 360px;
-    grid-template-areas: "header header" "stage panel";
+    grid-template-columns: 280px 1fr 360px;
+    grid-template-areas: "header header header" "reports stage panel";
     height: 100vh; gap: 1px;
     background: rgba(180, 140, 80, 0.08);
   }
@@ -99,6 +99,22 @@
     width: 14px; height: 14px; background: var(--gold);
     border-radius: 50%; border: none; cursor: pointer;
   }
+  select.scenario-select {
+    background: rgba(40, 35, 25, 0.6);
+    border: 1px solid rgba(201, 169, 106, 0.3);
+    color: var(--ink);
+    padding: 5px 8px;
+    font-family: var(--font-display);
+    font-size: 12px; letter-spacing: 2px;
+    cursor: pointer; outline: none;
+  }
+  select.scenario-select:hover { border-color: var(--gold); }
+  select.scenario-select option { background: var(--bg-2); color: var(--ink); }
+  .scenario-desc {
+    font-size: 10px; color: var(--ink-faint);
+    letter-spacing: 1px; max-width: 220px; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
   .spacer { flex: 1; }
   .stage {
     grid-area: stage;
@@ -132,6 +148,14 @@
     padding: 6px 10px; font-size: 11px;
     color: var(--ink); pointer-events: none;
     z-index: 10; white-space: nowrap; display: none;
+  }
+  .reports-panel {
+    grid-area: reports;
+    background: var(--bg-2);
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--panel-border);
+    overflow: hidden;
   }
   aside {
     grid-area: panel;
@@ -247,6 +271,24 @@
     font-size: 10px;
   }
   .obj-box .obj-title { color: var(--gold); letter-spacing: 2px; margin-bottom: 4px; }
+  .trend-box {
+    margin-top: 8px;
+    padding: 6px 8px;
+    background: rgba(20, 18, 12, 0.6);
+    border-left: 2px solid var(--gold);
+    font-size: 10px;
+  }
+  .trend-title {
+    color: var(--gold); letter-spacing: 2px;
+    margin-bottom: 4px; display: flex; justify-content: space-between;
+  }
+  .trend-title .hint { color: var(--ink-faint); font-size: 9px; letter-spacing: 0; }
+  .spark-row {
+    display: flex; align-items: center; gap: 6px;
+    margin: 3px 0;
+  }
+  .spark-label { width: 28px; color: var(--ink-dim); font-size: 9px; }
+  .spark-svg { flex: 1; height: 22px; display: block; }
   @media (max-width: 900px) {
     .app {
       grid-template-columns: 1fr;
@@ -266,8 +308,14 @@
       <button class="btn" id="btnPlay">▶ 启动</button>
       <button class="btn" id="btnStep">⏭ 单回合</button>
       <button class="btn" id="btnReset">↻ 重置</button>
+      <button class="btn" id="btnShot" title="保存当前战局为 PNG">📷 截图</button>
+    </div>
+    <div class="ctrl-group">
+      <select class="scenario-select" id="scenarioSelect" title="切换剧本"></select>
+      <span class="scenario-desc" id="scenarioDesc"></span>
     </div>
     <div class="stat">回合<b id="turnCount">0</b></div>
+    <div class="stat">时令<b id="seasonLabel" style="color:var(--gold-bright)">春</b></div>
     <div class="stat">存活<b id="aliveCount">7</b></div>
     <div class="speed-slider">
       <span class="stat">速度</span>
@@ -278,6 +326,11 @@
     <div class="stat" id="statusText">已就绪</div>
   </header>
 
+  <div class="reports-panel">
+    <div class="panel-title">实时战报 <span class="badge" id="reportCount">0 条</span></div>
+    <div class="reports" id="reports"></div>
+  </div>
+
   <div class="stage">
     <canvas id="grid" width="660" height="660"></canvas>
     <div class="stage-overlay">
@@ -285,10 +338,12 @@
         <div class="legend-row"><span class="legend-swatch" style="background:#3a3528"></span>平原</div>
         <div class="legend-row"><span class="legend-swatch" style="background:#5a4a3a"></span>山脉 (可占领,防御+50%)</div>
         <div class="legend-row"><span class="legend-swatch" style="background:#1a3548"></span>湖泊 (不可通行)</div>
+        <div class="legend-row"><span class="legend-swatch" style="background:#1a4a5a"></span>河流 (可渡,防御-20%)</div>
         <div class="legend-row"><span class="legend-swatch" style="background:#c8323a"></span>交战区</div>
         <div class="legend-row"><span class="legend-swatch" style="background:#e8c887"></span>★ 都城 / ● 别城 / ▲ 粮仓</div>
         <div class="legend-row"><span style="font-size:9px;color:#8a8475">驻军:同色越深兵力越强(浅=弱 · 深=强)</span></div>
-        <div class="legend-row"><span style="font-size:9px;color:#6a8aa8">点击格子:为该国增兵 +1000</span></div>
+        <div class="legend-row"><span style="font-size:9px;color:#6a8aa8">时令:春粮+25% · 秋粮+50% · 冬攻-15%</span></div>
+        <div class="legend-row"><span style="font-size:9px;color:#6a8aa8">点击格子:为该国增兵 +2000</span></div>
       </div>
     </div>
     <div class="hover-tip" id="hoverTip"></div>
@@ -300,9 +355,7 @@
       <div class="ranking" id="ranking"></div>
     </div>
     <div class="panel-section">
-      <div class="panel-title">实时战报 <span class="badge" id="reportCount">0 条</span></div>
-      <div class="reports" id="reports"></div>
-      <div class="panel-title" style="border-top:1px solid var(--panel-border)">诸侯详情</div>
+      <div class="panel-title">诸侯详情</div>
       <div class="detail" id="detail">
         <div class="nation-tabs" id="nationTabs"></div>
         <div id="detailBody"></div>
@@ -332,9 +385,21 @@ const SAFE_LINE_RATIO = 0.2;      // 降低,减少进入防御的概率
 const STALEMATE_TURNS = 10;       // 无战事超过此值,强制进攻(打破僵局)
 const MIN_TROOPS_RATIO = 0.15;    // 兵力保底比例(避免归零死循环)
 
-const Terrain = { PLAIN: 0, MOUNTAIN: 1, LAKE: 2 };   // 山脉可占领(防御+50%),湖泊不可通行
-const TerrainMod = { 0: 1.0, 1: 1.5, 2: Infinity };
-const TerrainColor = { 0: '#3a3528', 1: '#5a4a3a', 2: '#1a3548' };  // 平原/山地/湖泊
+const Terrain = { PLAIN: 0, MOUNTAIN: 1, LAKE: 2, RIVER: 3 };   // 山脉占领防+50%,湖不通,河流渡河减员
+const TerrainMod = { 0: 1.0, 1: 1.5, 2: Infinity, 3: 0.8 };  // 河流防御 0.8(渡河暴露)
+const TerrainColor = { 0: '#3a3528', 1: '#5a4a3a', 2: '#1a3548', 3: '#1a4a5a' };  // 平原/山地/湖泊/河流
+// 季节:每 30 回合轮转一次,影响粮产/进攻
+// 春:粮产+25%  夏:无事  秋:粮产+50%(丰收)  冬:攻方-15%(粮草不继)
+const SEASONS = ['春', '夏', '秋', '冬'];
+const SEASON_LEN = 30;
+const SEASON_MOD = {
+  '春': { foodMul: 1.25, atkMul: 1.00 },
+  '夏': { foodMul: 1.00, atkMul: 1.00 },
+  '秋': { foodMul: 1.50, atkMul: 1.00 },
+  '冬': { foodMul: 0.80, atkMul: 0.85 }
+};
+function currentSeason(turn) { return SEASONS[Math.floor(turn / SEASON_LEN) % 4]; }
+function seasonMod(turn) { return SEASON_MOD[currentSeason(turn)]; }
 
 // 七国配置:历史大区域内随机偏移出生点
 // 每国在自己历史方向的大区域内随机出生,区域从地图边缘延伸至近中原
@@ -358,6 +423,161 @@ function randomSpawn(zone) {
     Math.max(1, Math.min(GRID_H - 2, y))
   ];
 }
+// ==================== 经典剧本 ====================
+// 每个剧本预设:七国首都坐标、初始领土范围、兵力/粮草、人格、初始外交关系
+// 领土范围用相对首都的坐标偏移,生成时再判定湖泊/山地保留
+const SCENARIOS = {
+  random: {
+    name: '随机争霸',
+    desc: '七国于历史方向大区域内随机出生',
+    setup: null  // null 表示用默认 generateNations()
+  },
+  changping: {
+    name: '长平之战',
+    desc: '秦赵对峙长平,韩魏夹在其中,燕齐楚虎视眈眈',
+    setup: {
+      qin:  { capital:[3,12],  cells:[[3,12],[2,12],[4,12],[3,11],[3,13],[2,11],[4,13],[2,13],[4,11],[3,10],[3,14],[1,12],[5,12],[1,11],[5,13]], troops:2400, food:1400, persona:{ war:95, expand:80, diplo:25 } },
+      zhao: { capital:[14,8],  cells:[[14,8],[13,8],[15,8],[14,7],[14,9],[13,7],[15,9],[13,9],[15,7],[14,6],[14,10],[12,8],[16,8],[12,7],[16,9]], troops:2200, food:1300, persona:{ war:80, expand:65, diplo:40 } },
+      yan:  { capital:[22,3],  cells:[[22,3],[21,3],[23,3],[22,2],[22,4],[21,2],[23,4],[21,4],[23,2]], troops:1200, food:1000, persona:{ war:70, expand:50, diplo:45 } },
+      qi:   { capital:[25,15], cells:[[25,15],[24,15],[26,15],[25,14],[25,16],[24,14],[26,16],[24,16],[26,14]], troops:1400, food:1200, persona:{ war:35, expand:45, diplo:80 } },
+      chu:  { capital:[22,24], cells:[[22,24],[21,24],[23,24],[22,23],[22,25],[21,23],[23,25],[21,25],[23,23]], troops:1600, food:1300, persona:{ war:55, expand:35, diplo:70 } },
+      han:  { capital:[14,18], cells:[[14,18],[13,18],[15,18],[14,17],[14,19],[13,17],[15,19]], troops:900, food:900, persona:{ war:50, expand:55, diplo:75 } },
+      wei:  { capital:[8,18],  cells:[[8,18],[7,18],[9,18],[8,17],[8,19],[7,17],[9,19],[7,19],[9,17]], troops:1500, food:1100, persona:{ war:75, expand:70, diplo:50 } },
+      // 初始外交:秦赵世仇
+      hatred: [['qin','zhao',120], ['zhao','qin',120]],
+      warTargets: [['qin','zhao'], ['zhao','qin']]
+    }
+  },
+  hezong: {
+    name: '合纵攻秦',
+    desc: '六国合纵以抗秦,秦据关中独抗山东',
+    setup: {
+      qin:  { capital:[4,10],  cells:[[4,10],[3,10],[5,10],[4,9],[4,11],[3,9],[5,11],[3,11],[5,9],[2,10],[6,10],[2,9],[6,11],[2,11],[6,9]], troops:2000, food:1200, persona:{ war:85, expand:75, diplo:25 } },
+      zhao: { capital:[16,5],  cells:[[16,5],[15,5],[17,5],[16,4],[16,6],[15,4],[17,6],[15,6],[17,4]], troops:1800, food:1300, persona:{ war:75, expand:60, diplo:55 } },
+      yan:  { capital:[24,3],  cells:[[24,3],[23,3],[25,3],[24,2],[24,4],[23,2],[25,4],[23,4],[25,2]], troops:1500, food:1100, persona:{ war:65, expand:45, diplo:55 } },
+      qi:   { capital:[26,14], cells:[[26,14],[25,14],[27,14],[26,13],[26,15],[25,13],[27,15],[25,15],[27,13]], troops:1700, food:1300, persona:{ war:40, expand:50, diplo:80 } },
+      chu:  { capital:[24,24], cells:[[24,24],[23,24],[25,24],[24,23],[24,25],[23,23],[25,25],[23,25],[25,23]], troops:1800, food:1400, persona:{ war:55, expand:40, diplo:75 } },
+      han:  { capital:[15,15], cells:[[15,15],[14,15],[16,15],[15,14],[15,16],[14,14],[16,16]], troops:1300, food:1000, persona:{ war:50, expand:55, diplo:75 } },
+      wei:  { capital:[11,12], cells:[[11,12],[10,12],[12,12],[11,11],[11,13],[10,11],[12,13],[10,13],[12,11]], troops:1500, food:1100, persona:{ war:70, expand:65, diplo:55 } },
+      // 六国合纵:除秦外,六国互结盟约(每国与一个邻居结盟)
+      alliances: [['zhao','yan',250],['qi','wei',250],['chu','han',250],['zhao','wei',220]],
+      // 六国共同敌视秦
+      hatred: [['zhao','qin',120],['yan','qin',110],['qi','qin',100],['chu','qin',110],['han','qin',105],['wei','qin',120],
+               ['qin','zhao',80],['qin','yan',70],['qin','qi',60],['qin','chu',70],['qin','han',65],['qin','wei',80]]
+    }
+  },
+  maling: {
+    name: '马陵之战',
+    desc: '魏齐争锋,孙庞斗智,马陵道旁万弩齐发',
+    setup: {
+      qin:  { capital:[3,8],   cells:[[3,8],[2,8],[4,8],[3,7],[3,9],[2,7],[4,9],[2,9],[4,7]], troops:1500, food:1100, persona:{ war:85, expand:80, diplo:30 } },
+      zhao: { capital:[12,4],  cells:[[12,4],[11,4],[13,4],[12,3],[12,5],[11,3],[13,5],[11,5],[13,3]], troops:1400, food:1100, persona:{ war:75, expand:65, diplo:45 } },
+      yan:  { capital:[24,3],  cells:[[24,3],[23,3],[25,3],[24,2],[24,4],[23,2],[25,4],[23,4],[25,2]], troops:1100, food:1000, persona:{ war:70, expand:50, diplo:50 } },
+      qi:   { capital:[25,16], cells:[[25,16],[24,16],[26,16],[25,15],[25,17],[24,15],[26,17],[24,17],[26,15],[25,14],[25,18]], troops:2400, food:1500, persona:{ war:60, expand:55, diplo:65 } },
+      chu:  { capital:[22,24], cells:[[22,24],[21,24],[23,24],[22,23],[22,25],[21,23],[23,25],[21,25],[23,23]], troops:1600, food:1300, persona:{ war:55, expand:40, diplo:70 } },
+      han:  { capital:[15,15], cells:[[15,15],[14,15],[16,15],[15,14],[15,16],[14,14],[16,16]], troops:1000, food:900, persona:{ war:50, expand:55, diplo:75 } },
+      wei:  { capital:[11,11], cells:[[11,11],[10,11],[12,11],[11,10],[11,12],[10,10],[12,12],[10,12],[12,10],[11,9],[11,13]], troops:2200, food:1400, persona:{ war:80, expand:75, diplo:40 } },
+      // 齐魏世仇(孙庞之争)
+      hatred: [['qi','wei',130], ['wei','qi',130]],
+      warTargets: [['qi','wei'], ['wei','qi']]
+    }
+  },
+  yixue: {
+    name: '易水送别',
+    desc: '秦已灭韩魏,燕太子丹遣荆轲刺秦,赵危在旦夕',
+    setup: {
+      // 秦:已灭韩魏,势大权重,正图赵燕
+      qin:  { capital:[4,10],  cells:[[4,10],[3,10],[5,10],[4,9],[4,11],[3,9],[5,11],[3,11],[5,9],[2,10],[6,10],[2,9],[6,11],[2,11],[6,9],[1,10],[7,10],[10,14],[10,13],[10,15],[9,14],[9,13],[9,15],[11,14],[11,13],[11,15],[15,16],[14,16],[16,16],[15,15],[15,17],[14,15],[16,17]], troops:3200, food:1800, persona:{ war:95, expand:88, diplo:20 } },
+      // 赵危在旦夕
+      zhao: { capital:[14,7],  cells:[[14,7],[13,7],[15,7],[14,6],[14,8],[13,6],[15,8],[13,8],[15,6]], troops:1400, food:1000, persona:{ war:80, expand:55, diplo:50 } },
+      // 燕:刺秦失败,死仇难解
+      yan:  { capital:[22,3],  cells:[[22,3],[21,3],[23,3],[22,2],[22,4],[21,2],[23,4],[21,4],[23,2],[22,1],[22,5]], troops:1500, food:1100, persona:{ war:80, expand:55, diplo:35 } },
+      qi:   { capital:[26,15], cells:[[26,15],[25,15],[27,15],[26,14],[26,16],[25,14],[27,16],[25,16],[27,14]], troops:1500, food:1200, persona:{ war:40, expand:50, diplo:80 } },
+      chu:  { capital:[24,24], cells:[[24,24],[23,24],[25,24],[24,23],[24,25],[23,23],[25,25],[23,25],[25,23]], troops:1700, food:1300, persona:{ war:55, expand:40, diplo:70 } },
+      // 韩、魏已灭亡(不在此剧本出场)
+      // 秦燕死仇(刺秦失败后)
+      hatred: [['qin','yan',150], ['yan','qin',150], ['qin','zhao',120], ['zhao','qin',120]],
+      warTargets: [['qin','yan'], ['yan','qin'], ['qin','zhao'], ['zhao','qin']],
+      // 燕赵结盟(同抗秦)
+      alliances: [['yan','zhao',200]]
+    }
+  },
+  chushou: {
+    name: '楚汉相争',
+    desc: '秦势炽盛,楚汉并起争雄,赵燕齐残存苟延',
+    setup: {
+      // 秦:已扫平六国大部,势大权重(对应秦末汉初实际由项羽主导,但秦残余仍强)
+      qin:  { capital:[4,10],  cells:[[4,10],[3,10],[5,10],[4,9],[4,11],[3,9],[5,11],[3,11],[5,9],[2,10],[6,10],[2,9],[6,11],[2,11],[6,9],[1,10],[7,10]], troops:3400, food:1900, persona:{ war:95, expand:88, diplo:20 } },
+      // 楚:西楚霸王,中原强权
+      chu:  { capital:[12,18], cells:[[12,18],[11,18],[13,18],[12,17],[12,19],[11,17],[13,19],[11,19],[13,17],[12,16],[12,20],[10,18],[14,18]], troops:2600, food:1600, persona:{ war:85, expand:70, diplo:35 } },
+      // 汉:汉中王,志在天下(用 han id 表示刘邦的汉国,显示名为"汉")
+      han:  { name:'汉', capital:[18,15], cells:[[18,15],[17,15],[19,15],[18,14],[18,16],[17,14],[19,16],[17,16],[19,14]], troops:2400, food:1500, persona:{ war:80, expand:75, diplo:50 } },
+      // 残存诸国:赵/燕/齐实力弱小(魏已灭亡)
+      zhao: { capital:[14,7],  cells:[[14,7],[13,7],[15,7],[14,6],[14,8]], troops:800, food:600, persona:{ war:55, expand:30, diplo:60 } },
+      yan:  { capital:[24,3],  cells:[[24,3],[23,3],[25,3],[24,2],[24,4]], troops:700, food:500, persona:{ war:45, expand:25, diplo:65 } },
+      qi:   { capital:[26,15], cells:[[26,15],[25,15],[27,15],[26,14],[26,16]], troops:900, food:700, persona:{ war:40, expand:30, diplo:75 } },
+      // 楚汉世仇(争夺天下),秦为众矢之的
+      hatred: [['chu','han',150], ['han','chu',150], ['qin','han',120], ['han','qin',120], ['qin','chu',120], ['chu','qin',120], ['qin','zhao',100], ['zhao','qin',100]],
+      warTargets: [['chu','han'], ['han','chu'], ['qin','han'], ['qin','chu'], ['qin','zhao']]
+    }
+  },
+  qixiong: {
+    name: '齐秦并强',
+    desc: '秦据西河,齐霸山东,东西二强并立争雄',
+    setup: {
+      qin:  { capital:[4,10],  cells:[[4,10],[3,10],[5,10],[4,9],[4,11],[3,9],[5,11],[3,11],[5,9],[2,10],[6,10],[2,9],[6,11],[2,11],[6,9],[1,10],[7,10]], troops:2600, food:1600, persona:{ war:90, expand:85, diplo:30 } },
+      zhao: { capital:[14,6],  cells:[[14,6],[13,6],[15,6],[14,5],[14,7],[13,5],[15,7],[13,7],[15,5]], troops:1300, food:1000, persona:{ war:75, expand:60, diplo:50 } },
+      yan:  { capital:[24,3],  cells:[[24,3],[23,3],[25,3],[24,2],[24,4],[23,2],[25,4],[23,4],[25,2]], troops:1200, food:1000, persona:{ war:70, expand:50, diplo:50 } },
+      qi:   { capital:[26,15], cells:[[26,15],[25,15],[27,15],[26,14],[26,16],[25,14],[27,16],[25,16],[27,14],[26,13],[26,17],[25,13],[27,17]], troops:2800, food:1700, persona:{ war:55, expand:60, diplo:65 } },
+      chu:  { capital:[22,24], cells:[[22,24],[21,24],[23,24],[22,23],[22,25],[21,23],[23,25],[21,25],[23,23]], troops:1700, food:1300, persona:{ war:55, expand:40, diplo:70 } },
+      han:  { capital:[15,16], cells:[[15,16],[14,16],[16,16],[15,15],[15,17],[14,15],[16,17]], troops:1000, food:900, persona:{ war:50, expand:55, diplo:75 } },
+      wei:  { capital:[10,13], cells:[[10,13],[9,13],[11,13],[10,12],[10,14],[9,12],[11,14],[9,14],[11,12]], troops:1400, food:1100, persona:{ war:70, expand:65, diplo:55 } },
+      // 秦齐东西对峙
+      hatred: [['qin','qi',100], ['qi','qin',100]],
+      warTargets: [['qin','qi'], ['qi','qin']]
+    }
+  },
+  yuewang: {
+    name: '卧薪尝胆',
+    desc: '吴越世仇,越王忍辱谋复;中原晋齐楚并立',
+    setup: {
+      // 秦:西方小国
+      qin:  { capital:[3,8],   cells:[[3,8],[2,8],[4,8],[3,7],[3,9],[2,7],[4,9],[2,9],[4,7]], troops:1200, food:1000, persona:{ war:75, expand:70, diplo:35 } },
+      // 晋:韩赵魏未分,统称晋(占据中原,用 zhao id + name:'晋')
+      zhao: { name:'晋', capital:[12,6],  cells:[[12,6],[11,6],[13,6],[12,5],[12,7],[11,5],[13,7],[11,7],[13,5],[12,4],[12,8],[10,6],[14,6],[14,16],[13,16],[15,16],[14,15],[14,17],[13,15],[15,17],[8,18],[7,18],[9,18],[8,17],[8,19],[7,17],[9,19],[7,19],[9,17]], troops:2600, food:1600, persona:{ war:70, expand:50, diplo:55 } },
+      yan:  { capital:[24,3],  cells:[[24,3],[23,3],[25,3],[24,2],[24,4],[23,2],[25,4],[23,4],[25,2]], troops:1100, food:1000, persona:{ war:70, expand:50, diplo:50 } },
+      // 齐:东方强国
+      qi:   { capital:[26,15], cells:[[26,15],[25,15],[27,15],[26,14],[26,16],[25,14],[27,16],[25,16],[27,14]], troops:1700, food:1300, persona:{ war:50, expand:55, diplo:75 } },
+      // 楚:南方大国
+      chu:  { capital:[22,24], cells:[[22,24],[21,24],[23,24],[22,23],[22,25],[21,23],[23,25],[21,25],[23,23]], troops:1800, food:1400, persona:{ war:60, expand:45, diplo:65 } },
+      // 吴:东方新霸(用 han id + name:'吴',卧薪尝胆前吴强势)
+      han:  { name:'吴', capital:[25,12], cells:[[25,12],[24,12],[26,12],[25,11],[25,13],[24,11],[26,13],[24,13],[26,11],[25,10],[25,14]], troops:2400, food:1500, persona:{ war:75, expand:70, diplo:45 } },
+      // 越:忍辱负重(用 wei id + name:'越')
+      wei:  { name:'越', capital:[22,20], cells:[[22,20],[21,20],[23,20],[22,19],[22,21],[21,19],[23,21],[21,21],[23,19],[22,18],[22,22]], troops:1500, food:1000, persona:{ war:85, expand:60, diplo:35 } },
+      // 吴越世仇(卧薪尝胆)
+      hatred: [['han','wei',150], ['wei','han',150]],
+      warTargets: [['han','wei'], ['wei','han']]
+    }
+  },
+  fenjin: {
+    name: '三家分晋',
+    desc: '晋国三分,赵魏韩鼎立中原,秦楚齐四方觊觎',
+    setup: {
+      qin:  { capital:[3,8],   cells:[[3,8],[2,8],[4,8],[3,7],[3,9],[2,7],[4,9],[2,9],[4,7]], troops:1400, food:1100, persona:{ war:80, expand:75, diplo:35 } },
+      zhao: { capital:[12,4],  cells:[[12,4],[11,4],[13,4],[12,3],[12,5],[11,3],[13,5],[11,5],[13,3],[12,2],[12,6]], troops:1700, food:1200, persona:{ war:75, expand:70, diplo:45 } },
+      yan:  { capital:[24,3],  cells:[[24,3],[23,3],[25,3],[24,2],[24,4],[23,2],[25,4],[23,4],[25,2]], troops:1100, food:1000, persona:{ war:70, expand:50, diplo:50 } },
+      qi:   { capital:[25,16], cells:[[25,16],[24,16],[26,16],[25,15],[25,17],[24,15],[26,17],[24,17],[26,15]], troops:1500, food:1200, persona:{ war:50, expand:60, diplo:70 } },
+      chu:  { capital:[22,24], cells:[[22,24],[21,24],[23,24],[22,23],[22,25],[21,23],[23,25],[21,25],[23,23]], troops:1700, food:1300, persona:{ war:55, expand:40, diplo:70 } },
+      han:  { capital:[13,16], cells:[[13,16],[12,16],[14,16],[13,15],[13,17],[12,15],[14,17],[12,17],[14,15]], troops:1400, food:1100, persona:{ war:60, expand:60, diplo:60 } },
+      wei:  { capital:[9,14],  cells:[[9,14],[8,14],[10,14],[9,13],[9,15],[8,13],[10,15],[8,15],[10,13]], troops:1500, food:1100, persona:{ war:75, expand:75, diplo:50 } },
+      // 三家分晋后长期友好结盟期(分晋初年同气连枝,300-400 回合)
+      alliances: [['zhao','wei',350],['wei','han',400],['zhao','han',380]],
+      // 三家互不侵犯(仇恨清零,默认已有)
+      // 秦觊觎中原
+      hatred: [['qin','han',80],['qin','wei',70]]
+    }
+  }
+};
 // 七国配置生成函数:每次 init 调用时重新随机出生点(重置时也会刷新)
 function generateNations() {
   return [
@@ -369,6 +589,73 @@ function generateNations() {
     (() => { const c = randomSpawn(NATION_ZONES.han);  return { id:'han',  name:'韩', color:'#6a6a6a', bright:'#919191', capital:c, cells:[c], troops:1200, food:1100, persona:{ war:50, expand:55, diplo:75 } }; })(),
     (() => { const c = randomSpawn(NATION_ZONES.wei);  return { id:'wei',  name:'魏', color:'#6a5288', bright:'#9162ab', capital:c, cells:[c], troops:1200, food:1100, persona:{ war:70, expand:75, diplo:50 } }; })(),
   ];
+}
+// 基于剧本生成七国配置:领土形状预设,但首都位置在历史大区域内随机
+// 实现方式:以原首都为锚点,将整个领土平移到新随机首都位置,边界裁剪
+function generateNationsFromScenario(scenarioId) {
+  const sc = SCENARIOS[scenarioId];
+  if (!sc || !sc.setup) return generateNations();
+  const cfg = sc.setup;
+  const base = {
+    qin:  { id:'qin',  name:'秦', color:'#8a6e45', bright:'#b89860' },
+    zhao: { id:'zhao', name:'赵', color:'#3a7a52', bright:'#5aa878' },
+    yan:  { id:'yan',  name:'燕', color:'#ad6c81', bright:'#d490a4' },
+    qi:   { id:'qi',   name:'齐', color:'#327890', bright:'#5aa0b8' },
+    chu:  { id:'chu',  name:'楚', color:'#8d3548', bright:'#b5556c' },
+    han:  { id:'han',  name:'韩', color:'#6a6a6a', bright:'#919191' },
+    wei:  { id:'wei',  name:'魏', color:'#6a5288', bright:'#9162ab' }
+  };
+  // 计算领土相对首都的偏移(便于整体平移)
+  const offsets = {};
+  for (const id of Object.keys(base)) {
+    const s = cfg[id];
+    if (!s) continue;
+    const [cx, cy] = s.capital;
+    offsets[id] = s.cells.map(([x, y]) => [x - cx, y - cy]);
+  }
+  // 在历史大区域内随机新首都,并避免两国首都过近(曼哈顿距离 < 4 重抽)
+  const usedCapitals = [];
+  function pickCapital(id) {
+    const zone = NATION_ZONES[id];
+    if (!zone) return null;
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const x = zone.xMin + Math.floor(Math.random() * (zone.xMax - zone.xMin + 1));
+      const y = zone.yMin + Math.floor(Math.random() * (zone.yMax - zone.yMin + 1));
+      const cx = Math.max(2, Math.min(GRID_W - 3, x));
+      const cy = Math.max(2, Math.min(GRID_H - 3, y));
+      const tooClose = usedCapitals.some(([ux, uy]) => Math.abs(ux - cx) + Math.abs(uy - cy) < 4);
+      if (!tooClose) {
+        usedCapitals.push([cx, cy]);
+        return [cx, cy];
+      }
+    }
+    // 30 次都失败:直接用最后的
+    usedCapitals.push([Math.max(2, Math.min(GRID_W - 3, zone.xMin)), Math.max(2, Math.min(GRID_H - 3, zone.yMin))]);
+    return usedCapitals[usedCapitals.length - 1];
+  }
+  const nations = [];
+  for (const id of Object.keys(base)) {
+    const s = cfg[id];
+    if (!s) continue;
+    const newCap = pickCapital(id);
+    const [ncx, ncy] = newCap;
+    // 平移 cells 到新首都,并裁剪到地图内
+    const newCells = offsets[id]
+      .map(([dx, dy]) => [ncx + dx, ncy + dy])
+      .filter(([x, y]) => x >= 1 && x < GRID_W - 1 && y >= 1 && y < GRID_H - 1);
+    // 保证至少首都格在 cells 中
+    if (!newCells.some(([x, y]) => x === ncx && y === ncy)) newCells.push([ncx, ncy]);
+    nations.push({
+      ...base[id],
+      name: s.name || base[id].name,
+      capital: newCap,
+      cells: newCells,
+      troops: s.troops,
+      food: s.food,
+      persona: s.persona
+    });
+  }
+  return nations;
 }
 
 // ==================== Grid ====================
@@ -441,6 +728,35 @@ class Grid {
       const c = this.get(x, y);
       if (c && c.terrain === Terrain.PLAIN) c.terrain = Terrain.LAKE;
     }
+    // 河流:1-2 条蜿蜒河流,从地图一侧流向另一侧
+    const rivers = 1 + Math.floor(Math.random() * 2);
+    for (let r = 0; r < rivers; r++) {
+      // 随机选择起点边和流向
+      const horizontal = Math.random() < 0.5;
+      let x, y;
+      if (horizontal) {
+        x = 0;
+        y = 3 + Math.floor(Math.random() * (GRID_H - 6));
+      } else {
+        x = 3 + Math.floor(Math.random() * (GRID_W - 6));
+        y = 0;
+      }
+      const target = horizontal ? GRID_W - 1 : GRID_H - 1;
+      const steps = 25 + Math.floor(Math.random() * 15);
+      for (let s = 0; s < steps; s++) {
+        const c = this.get(x, y);
+        if (c && c.terrain === Terrain.PLAIN) c.terrain = Terrain.RIVER;
+        // 主方向 70%,侧向 30%
+        if (Math.random() < 0.7) {
+          if (horizontal) x += 1; else y += 1;
+        } else {
+          // 侧向蜿蜒
+          if (horizontal) y += (Math.random() < 0.5 ? -1 : 1);
+          else x += (Math.random() < 0.5 ? -1 : 1);
+        }
+        if (x < 0 || x >= GRID_W || y < 0 || y >= GRID_H) break;
+      }
+    }
   }
   initNations(nations) {
     for (const n of nations) {
@@ -460,6 +776,21 @@ class Grid {
         if (blocked.length === nbrs.length && nbrs.length > 0) {
           nbrs[0].terrain = Terrain.PLAIN;
           nbrs[0].dirty = true;
+        }
+      }
+      // 预设领土:除首都外其他格子(剧本模式)
+      if (n.cells && n.cells.length > 1) {
+        for (const [x, y] of n.cells) {
+          if (x === cx && y === cy) continue;
+          const c = this.get(x, y);
+          if (!c) continue;
+          // 跳过湖泊(剧本领土中可能包含湖泊,自动剔除)
+          if (c.terrain === Terrain.LAKE) continue;
+          // 河流格:可归属但视觉不覆盖(渡河领土,兵力可驻扎但河流仍可见)
+          // 山地可保留(剧本领土中山地作为关隘)
+          c.owner = n.id;
+          c.garrison = Math.floor(n.troops * 0.05);  // 边境格驻军 5%
+          c.dirty = true;
         }
       }
     }
@@ -523,13 +854,13 @@ class State {
     this.frontLine = [];
     this.lostRecently = 0;
     this.ally = null;            // 保留:主盟友 id(用于外交跟踪)
-    this.allies = new Map();     // 多盟约:allyId -> 过期回合(最多 2 个)
+    this.allies = new Map();     // 多盟约:allyId -> 过期回合(动态上限:≥5国3个, 4国2个, 3国1个)
     this.allyUntil = 0;         // 盟约有效期截止回合(主盟约)
     this.allyCooldown = 0;       // 撕毁盟约后冷却(不可立即再结)
     this.warTargets = new Set();
     this.neutralWith = new Set();  // 中立关系:既不结盟也不征战
     this.alive = true;
-    this.cellCount = cfg.cells.length;
+    this.cellCount = cfg.cells ? cfg.cells.length : 1;
     this.cityCount = 0;   // 初始无别城,游戏中动态建立
     this.lastCityBuildTurn = 0;  // 上次建城回合
     this.recentBattles = [];
@@ -562,6 +893,10 @@ class State {
     // marching 队列:在途兵力,需 N 回合抵达目的地
     // 元素: {fromX, fromY, toX, toY, startTurn, arriveTurn, troops}
     this.marching = [];
+    // === 历史趋势采样:每 10 回合记录一次,用于 sparkline ===
+    // history: [{turn, power, cells, troops, morale}]
+    this.history = [];
+    this.lastSampleTurn = 0;
   }
   randomGeneralName() {
     const surnames = ['王','李','张','陈','刘','杨','赵','黄','周','吴','徐','孙','马','朱','胡','林','郭','何','高','罗'];
@@ -570,25 +905,31 @@ class State {
   }
   // 主将统帅力(取最高)
   topGeneral() { return this.generals.reduce((m, g) => g.command > m.command ? g : m, this.generals[0]); }
-  // 经济力:领土 + 别城产出(每平原格 10, 山脉 5, 别城 +30)
+  // 经济力:领土产出(平原 10/格, 山脉 5/格) + 别城(+30/座) + 粮草
+  // 使用 tick 中缓存的地形统计 _plainCount/_mountainCount,避免重复遍历
   economicPower() {
-    let base = 0;
-    const cells = this.cellCount;
-    base = cells * 10 + this.cityCount * 30;
-    return base + this.food * 0.1;
+    const plain = this._plainCount ?? this.cellCount;  // 缓存未就绪时回退
+    const mountain = this._mountainCount ?? 0;
+    const terrainBase = plain * 10 + mountain * 5;
+    return terrainBase + this.cityCount * 30 + this.food * 0.15;
   }
-  // 军事力:兵力 × (1 + 主将统帅力/200)
+  // 军事力:兵力 × (1 + 主将统帅力/200) × 民心系数
+  // 民心 100 → 1.15 倍,民心 50 → 1.0 倍,民心 0 → 0.7 倍(军心涣散战力大跌)
   militaryPower() {
     const g = this.topGeneral();
-    return this.troops * (1 + g.command / 200);
+    const morFactor = 0.7 + (this.morale / 100) * 0.45;
+    return this.troops * (1 + g.command / 200) * morFactor;
   }
-  // 国力总值 = (经济 × 0.4) + (军事 × 0.5) + (民心 × 0.1 × scale)
+  // 国力总值 = (经济 × 0.35) + (军事 × 0.45) + (民心 × 6) + 粮草加成
+  // 民心权重 2→6,粮草通过 economicPower 与独立项双重计入
   power() {
     if (!this.alive) return -99999;
     const eco = this.economicPower();
     const mil = this.militaryPower();
     const mor = this.morale;  // 0-100
-    return eco * 0.4 + mil * 0.5 + mor * 2;
+    // 粮草断绝时国力额外衰减(后勤崩塌)
+    const foodFactor = this.food <= 0 ? 0.7 : 1.0;
+    return (eco * 0.35 + mil * 0.45 + mor * 6) * foodFactor;
   }
   topHatred() {
     let max = 0, target = null;
@@ -637,6 +978,14 @@ class BattleEngine {
     for (const s of this.states.values()) {
       if (!s.alive) continue;
       const cells = this.grid.cellsOf(s.id);
+      // 顺便缓存地形统计(经济力按地形加权:平原 10, 山脉 5)
+      let plainCount = 0, mountainCount = 0;
+      for (const c of cells) {
+        if (c.terrain === Terrain.MOUNTAIN) mountainCount++;
+        else if (c.terrain !== Terrain.LAKE) plainCount++;
+      }
+      s._plainCount = plainCount;
+      s._mountainCount = mountainCount;
       for (const c of cells) c._frontDist = Infinity;
       // BFS 从前线向内扩散
       const queue = [];
@@ -679,8 +1028,26 @@ class BattleEngine {
     if (this.turn % 5 === 0) this.checkCapitalRelocation();
     // 11. 复国检查(每回合)
     this.checkRestoration();
+    // 11.5 历史趋势采样:每 10 回合记录一次
+    this.sampleHistory();
     // 12. 粒子
     this.updateParticles();
+  }
+  // 历史趋势采样:每 10 回合记录一次,最多保留 120 个样本(1200 回合)
+  sampleHistory() {
+    if (this.turn - 10 < 0) return;
+    if (this.turn % 10 !== 0) return;
+    for (const s of this.states.values()) {
+      if (!s.history) s.history = [];
+      s.history.push({
+        turn: this.turn,
+        power: Math.max(0, s.power()),
+        cells: s.cellCount,
+        troops: Math.max(0, s.troops),
+        morale: s.morale
+      });
+      if (s.history.length > 120) s.history.shift();
+    }
   }
   // 动态建城:每 100 回合每国可建一座城,地点在本国领土上完全随机
   processCityBuilding() {
@@ -737,18 +1104,53 @@ class BattleEngine {
       s.lastGeneralTurn = this.turn;
     }
   }
-  // 民心自然回升(+0.5/回合,封顶 100)
+  // 民心系统:动态回升/下降,分级叛乱,归零大叛乱
   processMorale() {
     for (const s of this.states.values()) {
       if (!s.alive) continue;
-      // 粮草为 0 时民心持续下降
+      // 民心动态计算:基础回升 + 粮草影响 + 战事影响
+      // 1. 粮草影响:充裕时回升,断绝时下降(但不会单独让民心归零,有地板)
+      let delta = 0;
       if (s.food <= 0) {
-        s.morale = Math.max(0, s.morale - 0.5);
+        delta = -0.8;  // 饥荒:民心-0.8/回合(processRecovery 已额外扣 1.5)
+      } else if (s.food > 300) {
+        delta = +0.4;  // 富余:回升
       } else {
-        s.morale = Math.min(100, s.morale + 0.3);
+        delta = +0.2;   // 一般:微升
       }
-      // 民心 < 50 触发叛乱:5% 概率失去 1 格(不战报,仅释放民怨)
-      if (s.morale < 50 && Math.random() < 0.05 && s.cellCount > 1) {
+      // 2. 战事影响:近期失败多则下降(processRout 中已递减 lostRecently)
+      if (s.lostRecently > 0) {
+        delta -= 0.3 * Math.min(3, s.lostRecently);
+      }
+      // 3. 民心地板机制:民心越低,回升阻力越大但下降也越缓(避免轻易归零)
+      //    < 20 时下降速度减半(民怨已释放,接近临界但不易突破)
+      if (s.morale < 20 && delta < 0) delta *= 0.5;
+      // 4. 应用变化(下限 0,上限 100)
+      s.morale = Math.max(0, Math.min(100, s.morale + delta));
+
+      // === 分级叛乱 ===
+      // 民心 0:大叛乱!一次性失去 1-10 格(国本动摇)
+      if (s.morale <= 0 && s.cellCount > 1) {
+        const loseN = 1 + Math.floor(Math.random() * 10);  // 1-10 格
+        const cells = this.grid.cellsOf(s.id).filter(c => !c.capital);
+        if (cells.length > 0) {
+          // 随机选 loseN 格(不超过总非首都格数)
+          const shuffled = cells.sort(() => Math.random() - 0.5);
+          const toLose = shuffled.slice(0, Math.min(loseN, cells.length));
+          for (const c of toLose) {
+            c.owner = null;
+            c.garrison = 0;
+            c.dirty = true;
+            s.cellCount--;
+          }
+          // 大叛乱后民心反弹至 25(释放民怨,避免连续触发)
+          s.morale = 25;
+          this.report(this.turn, 'event', `${s.name}民变骤起!失地 ${toLose.length} 城,社稷动荡`, s);
+        }
+        continue;
+      }
+      // 民心 < 30:小规模民变(每回合 8% 概率失 1 格)
+      if (s.morale < 30 && Math.random() < 0.08 && s.cellCount > 1) {
         const cells = this.grid.cellsOf(s.id).filter(c => !c.capital && !c.city);
         if (cells.length > 0) {
           const c = cells[Math.floor(Math.random() * cells.length)];
@@ -756,7 +1158,20 @@ class BattleEngine {
           c.garrison = 0;
           c.dirty = true;
           s.cellCount--;
-          s.morale = Math.min(100, s.morale + 10);  // 叛乱后释放部分民怨
+          s.morale = Math.min(100, s.morale + 8);  // 释放部分民怨
+          this.report(this.turn, 'event', `${s.name}民心离散,${c.x},${c.y} 民变失守`, s);
+        }
+      }
+      // 民心 30-50:零星骚乱(每回合 3% 概率失 1 格)
+      else if (s.morale < 50 && Math.random() < 0.03 && s.cellCount > 1) {
+        const cells = this.grid.cellsOf(s.id).filter(c => !c.capital && !c.city);
+        if (cells.length > 0) {
+          const c = cells[Math.floor(Math.random() * cells.length)];
+          c.owner = null;
+          c.garrison = 0;
+          c.dirty = true;
+          s.cellCount--;
+          s.morale = Math.min(100, s.morale + 5);
         }
       }
     }
@@ -800,11 +1215,10 @@ class BattleEngine {
           c.contestTurns = 0;
           attacker.cellCount++;
           defender.cellCount--;
-          // 别城被攻占后自动消除(不归攻方,变为普通空地)
+          // 别城被攻占后城池易主(保留 city/fortress,攻方获得城池)
           if (c.city) {
-            c.city = false;
-            c.fortress = false;
             defender.cityCount = Math.max(0, defender.cityCount - 1);
+            attacker.cityCount++;
           }
           defender.lostRecently++;
           // 仇恨动态:侵占领土 +12;若为非战争目标 +25(挑衅性扩张)
@@ -1151,6 +1565,7 @@ class BattleEngine {
     if ((attacker.cooldown[key] || 0) > this.turn) return false;
 
     const terrainMod = TerrainMod[target.terrain] || 1.0;
+    const season = seasonMod(this.turn);  // 季节进攻系数(冬战攻方-15%)
     // 强化国力作用:大国对小国压倒性优势
     const defender = target.owner ? this.states.get(target.owner) : null;
     const defTroopsTotal = defender ? defender.troops : 0;
@@ -1158,10 +1573,17 @@ class BattleEngine {
     // 强国 2:1 时攻击力为 ~0.45A,弱国 1:2 时仅 ~0.056A,确保弱国难以反击
     const ratio = attacker.troops / Math.max(1, defTroopsTotal || 1);
     const powerRatio = Math.pow(ratio, 1.5);
-    const atkForce = (attacker.troops * 0.16) * powerRatio * (0.85 + Math.random() * 0.3) * terrainMod;
+    // 民心/粮草战力修正:民心高→军心稳(+15%),民心低→哗变风险(-25%)
+    // 粮草充足(>200)→后勤有力(+10%),粮草断绝→疲弱(-20%)
+    const atkMoraleMod = 0.85 + (attacker.morale / 100) * 0.30;  // 0.85~1.15
+    const atkFoodMod = attacker.food <= 0 ? 0.80 : (attacker.food > 200 ? 1.10 : 1.0);
+    const atkForce = (attacker.troops * 0.16) * powerRatio * (0.85 + Math.random() * 0.3) * terrainMod * season.atkMul * atkMoraleMod * atkFoodMod;
     const defBonus = target.fortress ? 1.2 : (target.capital ? 1.8 : 1.0);
+    // 防守方民心/粮草修正:守城军心同样受民心影响
+    const defMoraleMod = defender ? (0.85 + (defender.morale / 100) * 0.30) : 1.0;
+    const defFoodMod = defender ? (defender.food <= 0 ? 0.80 : (defender.food > 200 ? 1.10 : 1.0)) : 1.0;
     const defForce = target.owner
-      ? target.garrison * defBonus * (0.9 + Math.random() * 0.2)
+      ? target.garrison * defBonus * (0.9 + Math.random() * 0.2) * defMoraleMod * defFoodMod
       : (target.granary ? 30 : 8);
 
     // 城池(别城/首都)攻击:战胜率直接由国力比值决定,扩大国力差距体现
@@ -1229,12 +1651,11 @@ class BattleEngine {
         // 城池/首都:速战速决,胜利直接占领(无拉锯)
         const oldOwner = target.owner;
         const def = this.states.get(oldOwner);
-        // 别城被占自动消除,首都降级为普通城
         if (target.capital) {
+          // 首都:降级为普通城,交 eliminate 统一处理(cellCount/cityCount 在 eliminate 内加)
           target.capital = false;
           target.city = true;
           target.fortress = true;
-          attacker.cityCount++;
           this.eliminate(def, attacker);
           const ratio = attacker.troops / Math.max(1, def.initTroops);
           const capText = ratio > 2
@@ -1243,10 +1664,12 @@ class BattleEngine {
             ? `${attacker.name}孤注一掷,血战攻破${def.name}都城!${def.name}亡!`
             : `${attacker.name}军攻破${def.name}都城!${def.name}社稷倾覆!`;
           this.report(this.turn, 'capital', capText, attacker);
+          // 首都占领后归 eliminate 处理,此处不重复加 cellCount/cityCount
+          return true;
         } else {
-          target.city = false;
-          target.fortress = false;
+          // 别城:城池易主(保留 city/fortress 属性,攻方获得城池)
           def.cityCount = Math.max(0, def.cityCount - 1);
+          attacker.cityCount++;
           const ratio = attacker.troops / Math.max(1, def.troops);
           const text = ratio > 2
             ? `${attacker.name}锐士如虎,拔${def.name}城一座,守军溃散`
@@ -1388,19 +1811,26 @@ class BattleEngine {
         s.stance = 'attack';  // 强制进攻
       }
     }
+    const season = seasonMod(this.turn);  // 季节粮产加成
     for (const s of this.states.values()) {
       if (!s.alive) continue;
       // 兵力生成基于国力:国力越强,每回合产兵越多
       // 公式:基础25 + 领土产出(cellCount×5) + 国力加成(power×0.005)
       const powerBonus = s.power() * 0.005;
-      const recover = ((s.cellCount * 5) + 25 + powerBonus) / lateGameFatigue;
+      // 民心影响征兵效率:民心100→1.3倍,民心50→1.0倍,民心0→0.5倍(无人应征)
+      const moraleRecruitMod = 0.5 + (s.morale / 100) * 0.8;
+      const recover = (((s.cellCount * 5) + 25 + powerBonus) * moraleRecruitMod) / lateGameFatigue;
       const foodConsume = s.cellCount * 0.6 * lateGameFatigue;
+      // 季节粮产:春+25%,秋+50%,冬-20%
+      const foodGain = s.cellCount * 1.0 * season.foodMul;
+      s.food += foodGain;
       const minTroops = s.initTroops * MIN_TROOPS_RATIO;
       // ≤3 国时每回合额外消耗兵力(加速决战)
       const attrition = aliveCount <= 3 ? s.troops * 0.005 : 0;
       s.troops = Math.max(minTroops, s.troops - attrition);
-      // 兵力上限也随国力增长(强国可养更多兵)
-      const troopCap = s.initTroops * 1.6 + s.power() * 0.02;
+      // 兵力上限也随国力增长(强国可养更多兵);民心低则上限下调(兵源枯竭)
+      const moraleCapMod = 0.7 + (s.morale / 100) * 0.3;  // 0.7~1.0
+      const troopCap = (s.initTroops * 1.6 + s.power() * 0.02) * moraleCapMod;
       if (s.food > foodConsume) {
         s.food -= foodConsume;
         if (this.turn >= s.truceUntil) {
@@ -1409,9 +1839,10 @@ class BattleEngine {
           s.troops = Math.min(troopCap, s.troops + recover * 0.6);
         }
       } else {
-        // 粮草断绝:饥荒减员 -5%/回合(但保留兵底避免秒灭)
+        // 粮草断绝:饥荒减员 -8%/回合 + 民心下降(强化粮草作用)
+        // 民心在 processMorale 中处理(避免双重扣减),此处仅触发饥荒减员
         s.food = 0;
-        const famineLoss = s.troops * 0.05 + recover * 0.3 * lateGameFatigue;
+        const famineLoss = s.troops * 0.08 + recover * 0.3 * lateGameFatigue;
         s.troops = Math.max(minTroops, s.troops - famineLoss);
       }
       if (s.troops < minTroops) s.troops = minTroops;
@@ -1424,6 +1855,16 @@ class BattleEngine {
   reallocateTroops(s) {
     if (!s.attackAnchor) return;
     const ready = this.turn >= (s.anchorReadyTurn || 0);
+    // 国都距前线最近距离(用于判断国都受威胁程度)
+    const [capX, capY] = s.capital;
+    let capToFront = 99;
+    for (const c of s.frontLine) {
+      const d = Math.abs(c.x - capX) + Math.abs(c.y - capY);
+      if (d < capToFront) capToFront = d;
+    }
+    // 国都受威胁系数:前线越近,国都周边驻军越多(0.5~2.0)
+    // capToFront=0(国都即前线)→2.0, capToFront≥8(远)→0.5
+    const capitalThreat = Math.max(0.5, Math.min(2.0, 2.0 - capToFront / 8 * 1.5));
     for (const c of s.frontLine) {
       const d = Math.abs(c.x - s.attackAnchor.x) + Math.abs(c.y - s.attackAnchor.y);
       if (d <= 4) {
@@ -1437,6 +1878,24 @@ class BattleEngine {
         s.troops += pullback * 0.5;
       }
       c.dirty = true;
+    }
+    // 国都周边增兵:国都 3 格内的己方领土加成驻军
+    // 受威胁时(capToFront 小)加成更大
+    const capCell = this.grid.get(capX, capY);
+    if (capCell && capCell.owner === s.id) {
+      // 国都本身:基础驻军 + 受威胁加成
+      const capBoost = s.troops * 0.02 * capitalThreat;
+      capCell.garrison = Math.min(capCell.garrison + capBoost, s.troops * 0.35);
+      capCell.dirty = true;
+      // 国都周边 3 格内己方领土增兵
+      for (const c of this.grid.cellsOf(s.id)) {
+        const dc = Math.abs(c.x - capX) + Math.abs(c.y - capY);
+        if (dc === 0 || dc > 3) continue;
+        // 距国都越近,加成越大;受威胁时加成翻倍
+        const nearBoost = s.troops * 0.008 * (4 - dc) * capitalThreat;
+        c.garrison = Math.min(c.garrison + nearBoost, s.troops * 0.2);
+        c.dirty = true;
+      }
     }
   }
   // 派遣行军:从某国抽调兵力,经 N 回合抵达目的地
@@ -1920,10 +2379,15 @@ class DiplomacyManager {
       }
     }
   }
-  // 多盟约:每国最多 2 个盟友,可单方面撕毁
+  // 多盟约:每国最多 maxAllies 个盟友(动态:3/2/1),可单方面撕毁
   evaluateAlliances(turn) {
     const alive = Array.from(this.states.values()).filter(s => s.alive);
     if (alive.length < 3) return;
+    // 动态结盟上限:≥5国→3, 4国→2, 3国→1, ≤2国禁止(已在上方提前return)
+    let maxAllies = 3;
+    if (alive.length === 4) maxAllies = 2;
+    else if (alive.length === 3) maxAllies = 1;
+    this._maxAllies = maxAllies;  // 暴露给UI/调试
     const ranking = alive.sort((a, b) => b.power() - a.power());
     const strongest = ranking[0];
     const avgPower = alive.reduce((sum, s) => sum + s.power(), 0) / alive.length;
@@ -1962,15 +2426,15 @@ class DiplomacyManager {
         }
       }
     }
-    // 2. 缔结新盟约(每国最多 2 个)
+    // 2. 缔结新盟约(每国最多 maxAllies 个)
     const target = isHegemon ? strongest : ranking[0];
     const candidates = isHegemon ? ranking.slice(1) : ranking.slice(-3);
-    // 合纵:弱国与弱国结对(最多 2 个盟友)
+    // 合纵:弱国与弱国结对(最多 maxAllies 个盟友)
     for (const w of candidates) {
-      if (w.allies.size >= 2 || turn < w.allyCooldown) continue;
+      if (w.allies.size >= maxAllies || turn < w.allyCooldown) continue;
       if (w.id === target.id) continue;
       for (const w2 of candidates) {
-        if (w2.id === w.id || w2.allies.size >= 2 || turn < w2.allyCooldown) continue;
+        if (w2.id === w.id || w2.allies.size >= maxAllies || turn < w2.allyCooldown) continue;
         if (w2.id === target.id) continue;
         if (w.allies.has(w2.id)) continue;
         // 合纵反制:霸权时成功率 +30%(原 50% 提升至 65%),盟约上限 +50 回合
@@ -1992,14 +2456,14 @@ class DiplomacyManager {
         w.hatred[target.id] = (w.hatred[target.id] || 0) + 20;
         w2.hatred[target.id] = (w2.hatred[target.id] || 0) + 20;
         this.report(turn, 'diplomacy', `${w.name}与${w2.name}歃血为盟,合纵抗${target.name}(${duration}回合)`, w);
-        if (w.allies.size >= 2) break;
+        if (w.allies.size >= maxAllies) break;
       }
     }
-    // 连横:强国与中等国结对(强国也可有 2 个盟友)
-    if (strongest.allies.size < 2 && turn >= strongest.allyCooldown) {
+    // 连横:强国与中等国结对(强国也可有 maxAllies 个盟友)
+    if (strongest.allies.size < maxAllies && turn >= strongest.allyCooldown) {
       const middles = ranking.slice(1, -3);
       for (const m of middles) {
-        if (m.allies.size >= 2 || turn < m.allyCooldown) continue;
+        if (m.allies.size >= maxAllies || turn < m.allyCooldown) continue;
         if (strongest.allies.has(m.id)) continue;
         if (Math.random() < 0.5) {
           // 连横:强国短期利用盟约,150-220 回合(强国主动选择,较短)
@@ -2016,7 +2480,7 @@ class DiplomacyManager {
           if (strongest.hatred[m.id]) strongest.hatred[m.id] = 0;
           if (m.hatred[strongest.id]) m.hatred[strongest.id] = 0;
           this.report(turn, 'diplomacy', `${strongest.name}与${m.name}连横之约,共图天下(${duration}回合)`, strongest);
-          if (strongest.allies.size >= 2) break;
+          if (strongest.allies.size >= maxAllies) break;
         }
       }
     }
@@ -2210,29 +2674,41 @@ class Renderer {
       // 只渲染有效国家的颜色;无效 owner(指向已删除国家)显示纯地形
       // 注意:不在此修改 c.owner,避免渲染副作用导致数据不一致
       if (s) {
-        // 颜色深浅 = 兵力需求度(距前线越近需求越大→越深;后方需求小→浅)
-        // 国都周边额外加成(适度加深,不主导)
-        const dist = (c._frontDist === undefined) ? 0 : c._frontDist;
-        // 距前线归一化:0(前线)→1, 6+(远后方)→1
-        const frontness = Math.min(1, dist / 6);
-        // 主攻锚点附近(集中进攻方向):额外加深
-        let anchorBoost = 0;
-        if (s.attackAnchor) {
-          const da = Math.abs(c.x - s.attackAnchor.x) + Math.abs(c.y - s.attackAnchor.y);
-          if (da <= 3) anchorBoost = (4 - da) * 0.08;  // 0.08-0.24
-        }
-        // 国都周边加成(适度,3 格内 +0.06~+0.02)
-        const [ccx, ccy] = s.capital;
-        const dc = Math.abs(c.x - ccx) + Math.abs(c.y - ccy);
-        const capitalBoost = dc <= 3 ? (4 - dc) * 0.02 : 0;
-        // 总深色覆盖:前线 0.45 + 锚点加成 + 国都加成(封顶 0.6)
-        // 后方 0(纯原色,浅)
-        const darkness = Math.min(0.6, (1 - frontness) * 0.45 + anchorBoost + capitalBoost);
-        ctx.fillStyle = s.color;
-        ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
-        if (darkness > 0.02) {
-          ctx.fillStyle = `rgba(0,0,0,${darkness})`;
+        // 河流格:不覆盖国家色,只画一个小角标表示归属(兵力仍可渡河)
+        if (c.terrain === Terrain.RIVER) {
+          ctx.fillStyle = s.color;
+          ctx.fillRect(px + 1, py + 1, 5, 5);  // 左上角小色块
+          // 若有驻军,画一个小点表示兵力强度
+          if (c.garrison > 0) {
+            const intensity = Math.min(1, c.garrison / 200);
+            ctx.fillStyle = `rgba(0,0,0,${0.2 + intensity * 0.3})`;
+            ctx.fillRect(px + CELL_SIZE/2 - 2, py + CELL_SIZE/2 - 2, 4, 4);
+          }
+        } else {
+          // 颜色深浅 = 兵力需求度(距前线越近需求越大→越深;后方需求小→浅)
+          // 国都周边额外加成(适度加深,不主导)
+          const dist = (c._frontDist === undefined) ? 0 : c._frontDist;
+          // 距前线归一化:0(前线)→1, 6+(远后方)→1
+          const frontness = Math.min(1, dist / 6);
+          // 主攻锚点附近(集中进攻方向):额外加深
+          let anchorBoost = 0;
+          if (s.attackAnchor) {
+            const da = Math.abs(c.x - s.attackAnchor.x) + Math.abs(c.y - s.attackAnchor.y);
+            if (da <= 3) anchorBoost = (4 - da) * 0.08;  // 0.08-0.24
+          }
+          // 国都周边加成(适度,3 格内 +0.06~+0.02)
+          const [ccx, ccy] = s.capital;
+          const dc = Math.abs(c.x - ccx) + Math.abs(c.y - ccy);
+          const capitalBoost = dc <= 3 ? (4 - dc) * 0.02 : 0;
+          // 总深色覆盖:前线 0.45 + 锚点加成 + 国都加成(封顶 0.6)
+          // 后方 0(纯原色,浅)
+          const darkness = Math.min(0.6, (1 - frontness) * 0.45 + anchorBoost + capitalBoost);
+          ctx.fillStyle = s.color;
           ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+          if (darkness > 0.02) {
+            ctx.fillStyle = `rgba(0,0,0,${darkness})`;
+            ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+          }
         }
       }
     }
@@ -2574,9 +3050,6 @@ class UIPanel {
     const ptName = s.primaryTarget ? this.states.get(s.primaryTarget)?.name : '—';
     const ptColor = s.primaryTarget ? this.states.get(s.primaryTarget)?.bright : '#4a4639';
     const capOwned = this.grid_capitalOwned(s);
-    const recentHtml = s.recentBattles.slice(0, 5).map(b =>
-      `<div style="color:#8a8475;font-size:10px">vs ${b.vs} — <span style="color:${b.win ? '#5ac888' : '#c8323a'}">${b.win ? '胜' : '败'}</span></div>`
-    ).join('') || '<div style="color:#4a4639;font-size:10px">无近期战事</div>';
     const maxHatred = Math.max(100, top.value);
     const hatredPct = Math.min(100, (top.value / maxHatred) * 100);
     // 盟约信息(支持多个盟友)
@@ -2606,35 +3079,63 @@ class UIPanel {
       <div class="detail-row"><span class="label">国号</span><span class="val" style="color:${s.bright}">${s.name}</span></div>
       <div class="detail-row"><span class="label">状态</span><span class="val" style="color:${s.alive ? (inTruce ? '#b8923a' : '#5ac888') : '#c8323a'}">${s.alive ? (inTruce ? '休整中' : (s.stance === 'defend' ? '防御' : '进攻')) : '已亡'}</span></div>
       <div class="detail-row"><span class="label">都城</span><span class="val" style="color:${capOwned ? '#e8c887' : '#c8323a'}">${capOwned ? '坚守' : '陷落'}</span></div>
-      <div class="detail-row"><span class="label">总兵力</span><span class="val">${Math.floor(s.troops)}</span></div>
-      <div class="detail-row"><span class="label">粮草</span><span class="val">${Math.floor(s.food)}</span></div>
-      <div class="detail-row"><span class="label">民心</span><span class="val" style="color:${s.morale < 50 ? '#c8323a' : (s.morale < 80 ? '#b8923a' : '#5ac888')}">${Math.floor(s.morale)}%</span></div>
-      <div class="detail-row"><span class="label">经济力</span><span class="val">${Math.floor(s.economicPower())}</span></div>
-      <div class="detail-row"><span class="label">军事力</span><span class="val">${Math.floor(s.militaryPower())}</span></div>
       <div class="detail-row"><span class="label">国力</span><span class="val" style="color:var(--gold-bright)">${Math.floor(s.power())}</span></div>
-      <div class="detail-row"><span class="label">领土</span><span class="val">${s.cellCount} 城</span></div>
-      <div class="detail-row"><span class="label">前线</span><span class="val">${s.frontLine.length} 处</span></div>
-      <div class="detail-row"><span class="label">行军</span><span class="val" style="color:${s.marching.length > 0 ? '#b8923a' : 'var(--ink-faint)'}">${s.marching.length > 0 ? `${s.marching.length} 路 (${s.marching.reduce((sum,m) => sum + Math.floor(m.troops),0)}兵)` : '无'}</span></div>
-      <div class="detail-row"><span class="label">别城</span><span class="val">${s.cityCount} 座</span></div>
-      <div class="detail-row"><span class="label">主将</span><span class="val" style="color:var(--gold)">${s.topGeneral().name} (统帅${s.topGeneral().command})</span></div>
-      <div class="detail-row"><span class="label">人格</span><span class="val" style="font-size:10px;color:#8a8475">战${s.persona.war}/扩${s.persona.expand}/交${s.persona.diplo}</span></div>
-      <div class="detail-row"><span class="label">主攻</span><span class="val" style="color:${ptColor}">${ptName}</span></div>
+      <div class="detail-row"><span class="label">兵力</span><span class="val">${Math.floor(s.troops)} <span style="color:#4a4639;font-size:10px">/ 粮 ${Math.floor(s.food)}</span></span></div>
+      <div class="detail-row"><span class="label">民心</span><span class="val" style="color:${s.morale < 30 ? '#c8323a' : (s.morale < 70 ? '#b8923a' : '#5ac888')}">${Math.floor(s.morale)}%${s.morale < 30 ? ' ⚠' : ''}</span></div>
+      <div class="detail-row"><span class="label">领土</span><span class="val">${s.cellCount} 城 <span style="color:#4a4639;font-size:10px">/ 别城 ${s.cityCount}</span></span></div>
+      <div class="detail-row"><span class="label">主将</span><span class="val" style="color:var(--gold)">${s.topGeneral().name} <span style="color:#4a4639;font-size:10px">统帅${s.topGeneral().command}</span></span></div>
+      <div class="detail-row"><span class="label">盟约</span><span class="val" style="color:${allyColor}">${allyInfo}<span style="color:#4a4639;font-size:10px"> (上限${this.diplomacy._maxAllies ?? 3})</span></span></div>
       <div class="detail-row"><span class="label">宿敌</span><span class="val" style="color:${hatedColor}">${hatedName}</span></div>
       <div class="hatred-bar"><div style="width:${hatredPct}%"></div></div>
-      <div class="detail-row"><span class="label">盟约</span><span class="val" style="color:${allyColor}">${allyInfo}</span></div>
-      <div class="detail-row"><span class="label">中立</span><span class="val" style="color:#8a8475">${s.neutralWith.size > 0 ? Array.from(s.neutralWith).map(id => this.states.get(id)?.name || '?').join('、') : '无'}</span></div>
-      <div class="detail-row"><span class="label">战功</span><span class="val">${s.battlesWon}胜 / ${s.battlesLost}败 / ${s.kills}城</span></div>
       <div class="obj-box">
         <div class="obj-title">战略目标</div>
         ${this.getStrategy(s)}
       </div>
-      <div style="margin-top:6px;font-size:10px;color:#4a4639;letter-spacing:1px">近期战事</div>
-      ${recentHtml}
+      <div class="trend-box">
+        <div class="trend-title"><span>兴衰趋势</span><span class="hint">近 ${s.history ? s.history.length : 0} 采样</span></div>
+        ${this.renderSparklines(s)}
+      </div>
     `;
   }
   grid_capitalOwned(s) {
     const c = this.engine.grid.get(s.capital[0], s.capital[1]);
     return c && c.owner === s.id;
+  }
+  // 生成 sparkline SVG:4 条趋势线(国力/领土/兵力/民心)
+  renderSparklines(s) {
+    if (!s.history || s.history.length < 2) {
+      return '<div style="color:#4a4639;font-size:10px">数据采集中(满 20 回合显示)...</div>';
+    }
+    const W = 280, H = 22;
+    const series = [
+      { key: 'power', label: '国力', color: s.bright },
+      { key: 'cells', label: '领土', color: '#e8c887' },
+      { key: 'troops', label: '兵力', color: '#c8323a' },
+      { key: 'morale', label: '民心', color: '#5ac888' }
+    ];
+    return series.map(({ key, label, color }) => {
+      const vals = s.history.map(h => h[key]);
+      const min = Math.min(...vals);
+      const max = Math.max(...vals);
+      const range = max - min || 1;
+      const pts = vals.map((v, i) => {
+        const x = (i / (vals.length - 1)) * W;
+        const y = H - ((v - min) / range) * (H - 4) - 2;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(' ');
+      const cur = vals[vals.length - 1];
+      const first = vals[0];
+      const delta = cur - first;
+      const deltaStr = delta >= 0 ? `+${Math.round(delta)}` : `${Math.round(delta)}`;
+      const deltaColor = delta >= 0 ? '#5ac888' : '#c8323a';
+      return `<div class="spark-row">
+        <span class="spark-label">${label}</span>
+        <svg class="spark-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+          <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"/>
+        </svg>
+        <span style="color:${deltaColor};font-size:9px;width:36px;text-align:right">${deltaStr}</span>
+      </div>`;
+    }).join('');
   }
   getStrategy(s) {
     if (!s.alive) return '社稷已亡,无复战略';
@@ -2661,15 +3162,19 @@ class App {
   constructor() {
     this.canvas = document.getElementById('grid');
     this.speed = 500;
+    this.scenarioId = 'random';  // 当前剧本
     this.init();
   }
   init() {
     this.grid = new Grid();
     this.states = new Map();
-    // 每次 init 重新生成国家配置(含随机出生点)——重置时也会刷新
-    const nations = generateNations();
+    // 根据剧本生成:random 用随机出生,其他用预设领土
+    const sc = SCENARIOS[this.scenarioId];
+    const nations = (sc && sc.setup) ? generateNationsFromScenario(this.scenarioId) : generateNations();
     for (const cfg of nations) this.states.set(cfg.id, new State(cfg));
     this.grid.initNations(nations);
+    // 剧本预设外交关系(仇恨/盟约/宣战)
+    if (sc && sc.setup) this.applyScenarioDiplomacy(sc.setup);
 
     this.engine = new BattleEngine(this.grid, this.states, (t, ty, txt, s) => this.ui.addReport(t, ty, txt, s));
     this.diplomacy = new DiplomacyManager(this.grid, this.states, (t, ty, txt, s) => this.ui.addReport(t, ty, txt, s));
@@ -2683,13 +3188,58 @@ class App {
     this.bindHover();
     this.ui.select('qin');
     this.ui.renderRanking();
-    this.updateStatus('已就绪');
+    this.updateStatus(sc ? `剧本: ${sc.name}` : '已就绪');
+    if (sc && sc.setup) this.ui.addReport(0, 'event', `剧本开启: ${sc.name} — ${sc.desc}`, null);
     this.render();
+  }
+  // 应用剧本预设外交
+  applyScenarioDiplomacy(setup) {
+    if (setup.hatred) {
+      for (const [a, b, v] of setup.hatred) {
+        const sa = this.states.get(a);
+        if (sa) sa.hatred[b] = (sa.hatred[b] || 0) + v;
+      }
+    }
+    if (setup.alliances) {
+      for (const [a, b, dur] of setup.alliances) {
+        const sa = this.states.get(a), sb = this.states.get(b);
+        if (sa && sb) {
+          sa.allies.set(b, dur);
+          sb.allies.set(a, dur);
+          sa.ally = b;
+          sb.ally = a;
+        }
+      }
+    }
+    if (setup.warTargets) {
+      for (const [a, b] of setup.warTargets) {
+        const sa = this.states.get(a);
+        if (sa) sa.warTargets.add(b);
+      }
+    }
   }
   bindControls() {
     document.getElementById('btnPlay').onclick = () => this.toggle();
     document.getElementById('btnStep').onclick = () => this.step();
     document.getElementById('btnReset').onclick = () => this.reset();
+    document.getElementById('btnShot').onclick = () => this.exportScreenshot();
+    // 剧本选择器:填充选项 + 切换事件
+    const selEl = document.getElementById('scenarioSelect');
+    const descEl = document.getElementById('scenarioDesc');
+    selEl.innerHTML = '';
+    for (const [id, sc] of Object.entries(SCENARIOS)) {
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = sc.name;
+      selEl.appendChild(opt);
+    }
+    selEl.value = this.scenarioId;
+    descEl.textContent = SCENARIOS[this.scenarioId].desc;
+    selEl.onchange = (e) => {
+      this.scenarioId = e.target.value;
+      descEl.textContent = SCENARIOS[this.scenarioId].desc;
+      this.reset();
+    };
     const speedEl = document.getElementById('speed');
     const labelEl = document.getElementById('speedLabel');
     // 非线性映射:滑块 0-100 -> 实际延迟 30-2000ms (指数曲线,低端精细,高端粗略)
@@ -2718,9 +3268,9 @@ class App {
         this.renderer.hoverCell = c;
         const owner = c.owner ? this.states.get(c.owner) : null;
         const contest = c.contestingOwner ? this.states.get(c.contestingOwner) : null;
-        const terrainName = ['平原', '山脉', '湖泊'][c.terrain];
-        // 经济产出:平原 +10/山脉 +5/湖泊 0
-        const eco = c.terrain === 0 ? 10 : (c.terrain === 1 ? 5 : 0);
+        const terrainName = ['平原', '山脉', '湖泊', '河流'][c.terrain];
+        // 经济产出:平原 +10/山脉 +5/湖泊 0/河流 +3
+        const eco = c.terrain === 0 ? 10 : (c.terrain === 1 ? 5 : (c.terrain === 3 ? 3 : 0));
         tip.style.display = 'block';
         tip.style.left = (e.clientX - rect.left + 14) + 'px';
         tip.style.top = (e.clientY - rect.top + 14) + 'px';
@@ -2751,7 +3301,7 @@ class App {
       if (!c || !c.owner) return;
       const s = this.states.get(c.owner);
       if (!s || !s.alive) return;
-      const ADD = 1000;
+      const ADD = 2000;
       s.troops += ADD;
       c.garrison += ADD;
       c.dirty = true;
@@ -2790,9 +3340,16 @@ class App {
     this.updateStatus('已暂停');
   }
   step() {
+    const prevSeason = currentSeason(this.engine.turn);
     this.engine.tick();
     this.diplomacy.tick(this.engine.turn);
+    const curSeason = currentSeason(this.engine.turn);
+    // 换季通知
+    if (prevSeason !== curSeason) {
+      this.ui.addReport(this.engine.turn, 'event', `时令更替: ${prevSeason} → ${curSeason}`, null);
+    }
     document.getElementById('turnCount').textContent = this.engine.turn;
+    document.getElementById('seasonLabel').textContent = curSeason;
     const alive = Array.from(this.states.values()).filter(s => s.alive).length;
     document.getElementById('aliveCount').textContent = alive;
     this.ui.refreshTabs();
@@ -2813,6 +3370,70 @@ class App {
     document.getElementById('turnCount').textContent = '0';
     document.getElementById('aliveCount').textContent = '7';
     this.init();
+  }
+  // 导出当前战局为 PNG:canvas + 标题/回合/季节/国力榜合成
+  exportScreenshot() {
+    const W = 1100, H = 720;
+    const out = document.createElement('canvas');
+    out.width = W; out.height = H;
+    const ctx = out.getContext('2d');
+    // 背景
+    ctx.fillStyle = '#050507';
+    ctx.fillRect(0, 0, W, H);
+    // 标题
+    ctx.fillStyle = '#e8c887';
+    ctx.font = 'bold 22px "Songti SC", "STSong", serif';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`战国七雄 · ${SCENARIOS[this.scenarioId].name}`, 20, 16);
+    ctx.fillStyle = '#8a8475';
+    ctx.font = '12px monospace';
+    const aliveCount = Array.from(this.states.values()).filter(s => s.alive).length;
+    ctx.fillText(`回合 ${this.engine.turn} · 时令 ${currentSeason(this.engine.turn)} · 存活 ${aliveCount} 国`, 20, 48);
+    // 主战图(canvas 缩放贴到左侧 660x660)
+    ctx.drawImage(this.canvas, 20, 70, 660, 660);
+    // 右侧国力榜
+    const rx = 700, ry = 70;
+    ctx.fillStyle = '#c9a96a';
+    ctx.font = 'bold 13px "Songti SC", serif';
+    ctx.fillText('诸侯国力榜', rx, ry);
+    ctx.fillStyle = '#8a8475';
+    ctx.font = '11px monospace';
+    const arr = Array.from(this.states.values()).sort((a, b) => b.power() - a.power());
+    const maxP = Math.max(...arr.map(s => s.power()), 1);
+    arr.forEach((s, i) => {
+      const y = ry + 24 + i * 28;
+      // 国号
+      ctx.fillStyle = s.bright;
+      ctx.font = 'bold 13px "Songti SC", serif';
+      ctx.fillText(`${i + 1}. ${s.name}`, rx, y);
+      // 状态
+      ctx.fillStyle = s.alive ? '#8a8475' : '#4a4639';
+      ctx.font = '11px monospace';
+      ctx.fillText(s.alive ? `${s.cellCount}城 / ${Math.floor(s.troops)}兵` : '已亡', rx + 60, y + 2);
+      // 国力条
+      const barW = 280;
+      ctx.fillStyle = 'rgba(120,100,70,0.2)';
+      ctx.fillRect(rx, y + 18, barW, 4);
+      ctx.fillStyle = s.color;
+      ctx.fillRect(rx, y + 18, barW * (s.power() / maxP), 4);
+    });
+    // 底部说明
+    ctx.fillStyle = '#4a4639';
+    ctx.font = '10px monospace';
+    ctx.fillText(`Generated by 战国七雄网格争霸模拟器 · ${new Date().toLocaleString('zh-CN')}`, 20, H - 20);
+    // 下载
+    out.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `战国七雄_${SCENARIOS[this.scenarioId].name}_T${this.engine.turn}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      this.flashStatus(`📷 已保存: ${a.download}`);
+    }, 'image/png');
   }
   updateStatus(txt) {
     document.getElementById('statusText').textContent = txt;
