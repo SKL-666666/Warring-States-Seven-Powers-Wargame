@@ -1,0 +1,2835 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>战国七雄 · 网格争霸模拟器</title>
+<style>
+  :root {
+    --bg: #050507;
+    --bg-2: #0b0c10;
+    --panel-border: rgba(180, 140, 80, 0.18);
+    --ink: #e8e2d0;
+    --ink-dim: #8a8475;
+    --ink-faint: #4a4639;
+    --gold: #c9a96a;
+    --gold-bright: #e8c887;
+    --blood: #c8323a;
+    --font-display: "Songti SC", "STSong", "SimSun", "宋体", serif;
+    --font-mono: "SF Mono", "Menlo", "Consolas", "Courier New", monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-mono);
+    overflow: hidden;
+    font-size: 13px;
+  }
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.6) 100%),
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/><feColorMatrix values='0 0 0 0 0.1  0 0 0 0 0.08  0 0 0 0 0.05  0 0 0 0.5 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    pointer-events: none;
+    z-index: 1;
+    mix-blend-mode: overlay;
+    opacity: 0.5;
+  }
+  .app {
+    position: relative; z-index: 2;
+    display: grid;
+    grid-template-rows: 56px 1fr;
+    grid-template-columns: 1fr 360px;
+    grid-template-areas: "header header" "stage panel";
+    height: 100vh; gap: 1px;
+    background: rgba(180, 140, 80, 0.08);
+  }
+  header {
+    grid-area: header;
+    background: var(--bg-2);
+    display: flex; align-items: center;
+    padding: 0 24px; gap: 20px;
+    border-bottom: 1px solid var(--panel-border);
+  }
+  .brand {
+    font-family: var(--font-display);
+    font-size: 22px; font-weight: 700;
+    letter-spacing: 8px;
+    color: var(--gold-bright);
+    text-shadow: 0 0 20px rgba(232, 200, 135, 0.4);
+    white-space: nowrap;
+  }
+  .brand .sub {
+    font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 2px;
+    color: var(--ink-faint); margin-left: 12px; font-weight: 400;
+  }
+  .ctrl-group { display: flex; align-items: center; gap: 8px; }
+  .btn {
+    background: rgba(40, 35, 25, 0.6);
+    border: 1px solid rgba(201, 169, 106, 0.3);
+    color: var(--ink);
+    padding: 6px 14px;
+    font-family: var(--font-mono); font-size: 12px;
+    cursor: pointer; transition: all 0.2s;
+    letter-spacing: 1px; user-select: none;
+  }
+  .btn:hover { background: rgba(201, 169, 106, 0.15); border-color: var(--gold); color: var(--gold-bright); }
+  .btn.active { background: rgba(201, 169, 106, 0.25); border-color: var(--gold); color: var(--gold-bright); }
+  .stat { font-size: 12px; color: var(--ink-dim); letter-spacing: 1px; }
+  .stat b { color: var(--gold-bright); font-weight: 600; margin-left: 4px; }
+  .speed-slider { display: flex; align-items: center; gap: 8px; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    height: 4px;
+    background: rgba(120, 100, 70, 0.3);
+    outline: none; cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 14px; height: 14px;
+    background: var(--gold);
+    border-radius: 50%; cursor: pointer;
+    box-shadow: 0 0 6px rgba(232, 200, 135, 0.6);
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 14px; height: 14px; background: var(--gold);
+    border-radius: 50%; border: none; cursor: pointer;
+  }
+  .spacer { flex: 1; }
+  .stage {
+    grid-area: stage;
+    position: relative;
+    background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  #grid {
+    display: block; cursor: crosshair;
+    box-shadow: 0 0 80px rgba(0,0,0,0.8) inset;
+  }
+  .stage-overlay {
+    position: absolute; top: 12px; left: 12px;
+    font-size: 10px; color: var(--ink-faint);
+    letter-spacing: 1px; pointer-events: none;
+  }
+  .legend {
+    display: flex; flex-direction: column; gap: 4px;
+    background: rgba(0,0,0,0.6);
+    padding: 8px 10px;
+    border: 1px solid var(--panel-border);
+    backdrop-filter: blur(4px);
+  }
+  .legend-row { display: flex; align-items: center; gap: 6px; }
+  .legend-swatch { width: 10px; height: 10px; border: 1px solid rgba(255,255,255,0.2); }
+  .hover-tip {
+    position: absolute;
+    background: rgba(0,0,0,0.92);
+    border: 1px solid var(--gold);
+    padding: 6px 10px; font-size: 11px;
+    color: var(--ink); pointer-events: none;
+    z-index: 10; white-space: nowrap; display: none;
+  }
+  aside {
+    grid-area: panel;
+    background: var(--bg-2);
+    display: grid;
+    grid-template-rows: 220px 1fr;
+    border-left: 1px solid var(--panel-border);
+    overflow: hidden;
+  }
+  .panel-section {
+    display: flex; flex-direction: column;
+    border-bottom: 1px solid var(--panel-border);
+    overflow: hidden;
+  }
+  .panel-section:last-child { border-bottom: none; }
+  .panel-title {
+    font-family: var(--font-display);
+    font-size: 13px; letter-spacing: 4px;
+    color: var(--gold);
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--panel-border);
+    background: rgba(20, 18, 12, 0.5);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-shrink: 0;
+  }
+  .panel-title .badge {
+    font-family: var(--font-mono); font-size: 10px;
+    color: var(--ink-faint); letter-spacing: 1px;
+  }
+  .ranking {
+    padding: 6px 10px;
+    font-size: 11px;
+    overflow-y: auto;
+  }
+  .rank-row {
+    display: grid;
+    grid-template-columns: 18px 32px 1fr 50px 40px;
+    gap: 6px; padding: 4px 0;
+    border-bottom: 1px dotted rgba(120, 100, 70, 0.12);
+    align-items: center;
+  }
+  .rank-row .rk { color: var(--ink-faint); text-align: center; }
+  .rank-row .nm { font-family: var(--font-display); font-size: 13px; }
+  .rank-row .pw { text-align: right; color: var(--gold-bright); }
+  .rank-row .ct { text-align: right; color: var(--ink-dim); }
+  .rank-row .bar { height: 3px; background: rgba(120,100,70,0.2); }
+  .rank-row .bar > div { height: 100%; }
+  .rank-row.dead { opacity: 0.35; text-decoration: line-through; }
+  .reports {
+    flex: 1; overflow-y: auto;
+    padding: 8px 12px; font-size: 11px; line-height: 1.6;
+  }
+  .reports::-webkit-scrollbar, .ranking::-webkit-scrollbar, .detail::-webkit-scrollbar { width: 4px; }
+  .reports::-webkit-scrollbar-track, .ranking::-webkit-scrollbar-track, .detail::-webkit-scrollbar-track { background: transparent; }
+  .reports::-webkit-scrollbar-thumb, .ranking::-webkit-scrollbar-thumb, .detail::-webkit-scrollbar-thumb { background: var(--ink-faint); }
+  .report {
+    padding: 4px 0;
+    border-bottom: 1px dashed rgba(120, 100, 70, 0.12);
+    color: var(--ink-dim);
+    animation: slideIn 0.4s ease;
+  }
+  .report .turn { color: var(--ink-faint); margin-right: 6px; }
+  .report .tag {
+    display: inline-block; padding: 0 4px;
+    font-size: 9px; margin-right: 4px;
+    border-radius: 2px; color: #000; font-weight: 700;
+  }
+  .report.victory { color: var(--ink); }
+  .report.defeat { color: #8a4a4a; }
+  .report.diplomacy { color: #6a8aa8; }
+  .report.capital { color: var(--gold-bright); font-weight: 600; }
+  .report.event { color: #c0a060; font-style: italic; }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(8px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  .detail {
+    flex: 1; overflow-y: auto;
+    padding: 10px 12px; font-size: 11px;
+  }
+  .nation-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+  .nation-tab {
+    padding: 3px 8px; font-size: 11px;
+    cursor: pointer; border: 1px solid transparent;
+    background: rgba(40, 35, 25, 0.4);
+    color: var(--ink-dim); transition: all 0.2s;
+    font-family: var(--font-display); letter-spacing: 1px;
+  }
+  .nation-tab:hover { color: var(--ink); }
+  .nation-tab.selected { border-color: currentColor; color: var(--ink); }
+  .nation-tab.dead { text-decoration: line-through; opacity: 0.4; }
+  .detail-row {
+    display: flex; justify-content: space-between;
+    padding: 4px 0;
+    border-bottom: 1px dotted rgba(120, 100, 70, 0.1);
+  }
+  .detail-row .label { color: var(--ink-faint); }
+  .detail-row .val { color: var(--ink); font-weight: 600; }
+  .hatred-bar {
+    height: 4px; background: rgba(120, 100, 70, 0.2);
+    margin-top: 2px; position: relative;
+  }
+  .hatred-bar > div {
+    height: 100%;
+    background: linear-gradient(90deg, var(--gold), var(--blood));
+    transition: width 0.3s;
+  }
+  .obj-box {
+    margin-top: 8px;
+    padding: 8px;
+    background: rgba(20, 18, 12, 0.6);
+    border-left: 2px solid var(--gold);
+    font-size: 10px;
+  }
+  .obj-box .obj-title { color: var(--gold); letter-spacing: 2px; margin-bottom: 4px; }
+  @media (max-width: 900px) {
+    .app {
+      grid-template-columns: 1fr;
+      grid-template-rows: 56px 1fr 320px;
+      grid-template-areas: "header" "stage" "panel";
+    }
+    aside { grid-template-rows: 200px 1fr; }
+    .brand .sub { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">战国七雄<span class="sub">GRID CONQUEST SIMULATOR</span></div>
+    <div class="ctrl-group">
+      <button class="btn" id="btnPlay">▶ 启动</button>
+      <button class="btn" id="btnStep">⏭ 单回合</button>
+      <button class="btn" id="btnReset">↻ 重置</button>
+    </div>
+    <div class="stat">回合<b id="turnCount">0</b></div>
+    <div class="stat">存活<b id="aliveCount">7</b></div>
+    <div class="speed-slider">
+      <span class="stat">速度</span>
+      <input type="range" id="speed" min="0" max="100" value="50" step="1">
+      <span class="stat" id="speedLabel" style="width:52px;text-align:right">500ms</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="stat" id="statusText">已就绪</div>
+  </header>
+
+  <div class="stage">
+    <canvas id="grid" width="660" height="660"></canvas>
+    <div class="stage-overlay">
+      <div class="legend">
+        <div class="legend-row"><span class="legend-swatch" style="background:#3a3528"></span>平原</div>
+        <div class="legend-row"><span class="legend-swatch" style="background:#5a4a3a"></span>山脉 (可占领,防御+50%)</div>
+        <div class="legend-row"><span class="legend-swatch" style="background:#1a3548"></span>湖泊 (不可通行)</div>
+        <div class="legend-row"><span class="legend-swatch" style="background:#c8323a"></span>交战区</div>
+        <div class="legend-row"><span class="legend-swatch" style="background:#e8c887"></span>★ 都城 / ● 别城 / ▲ 粮仓</div>
+        <div class="legend-row"><span style="font-size:9px;color:#8a8475">驻军:同色越深兵力越强(浅=弱 · 深=强)</span></div>
+        <div class="legend-row"><span style="font-size:9px;color:#6a8aa8">点击格子:为该国增兵 +1000</span></div>
+      </div>
+    </div>
+    <div class="hover-tip" id="hoverTip"></div>
+  </div>
+
+  <aside>
+    <div class="panel-section">
+      <div class="panel-title">诸侯国力榜 <span class="badge" id="rankBadge">实时</span></div>
+      <div class="ranking" id="ranking"></div>
+    </div>
+    <div class="panel-section">
+      <div class="panel-title">实时战报 <span class="badge" id="reportCount">0 条</span></div>
+      <div class="reports" id="reports"></div>
+      <div class="panel-title" style="border-top:1px solid var(--panel-border)">诸侯详情</div>
+      <div class="detail" id="detail">
+        <div class="nation-tabs" id="nationTabs"></div>
+        <div id="detailBody"></div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script type="module">
+/* =====================================================================
+ * 战国七雄网格争霸模拟器 v2
+ * - 首都制:首都陷落即亡国
+ * - 单线作战 AI:集中兵力攻一个方向
+ * - 兵棋要素:都城/粮仓/关隘/国力榜/战略目标
+ * ===================================================================== */
+
+const GRID_W = 30, GRID_H = 30;
+const CELL_SIZE = 22;
+const CONTEST_TURNS = 2;          // 拉锯更短,节奏紧凑
+const ROUT_THRESHOLD = 2;         // 连失 2 格触发溃败
+const ROUT_PROB = 0.5;
+const TRUCE_TURNS = 6;            // 休整期缩短
+const COOLDOWN_TURNS = 3;         // 失败冷却缩短
+const DIPLOMACY_INTERVAL = 12;    // 外交评估更频繁
+const HATRED_PER_CELL = 12;
+const SAFE_LINE_RATIO = 0.2;      // 降低,减少进入防御的概率
+const STALEMATE_TURNS = 10;       // 无战事超过此值,强制进攻(打破僵局)
+const MIN_TROOPS_RATIO = 0.15;    // 兵力保底比例(避免归零死循环)
+
+const Terrain = { PLAIN: 0, MOUNTAIN: 1, LAKE: 2 };   // 山脉可占领(防御+50%),湖泊不可通行
+const TerrainMod = { 0: 1.0, 1: 1.5, 2: Infinity };
+const TerrainColor = { 0: '#3a3528', 1: '#5a4a3a', 2: '#1a3548' };  // 平原/山地/湖泊
+
+// 七国配置:历史大区域内随机偏移出生点
+// 每国在自己历史方向的大区域内随机出生,区域从地图边缘延伸至近中原
+// 偏移随机性:可能刷到靠近中原的"危险位置"(短安全发育期但便于扩张)
+//          也可能刷到远离中原的"安全角落"(长发育期但被边缘化)
+const NATION_ZONES = {
+  qin:  { xMin:0,  xMax:14, yMin:0,  yMax:14 },  // 西北大区域(关中→中原)
+  zhao: { xMin:8,  xMax:22, yMin:0,  yMax:10 },  // 北方大区域(代地→中原)
+  yan:  { xMin:14, xMax:28, yMin:0,  yMax:14 },  // 东北大区域(蓟辽→中原)
+  qi:   { xMin:14, xMax:28, yMin:8,  yMax:20 },  // 东方大区域(齐鲁→中原)
+  chu:  { xMin:14, xMax:28, yMin:14, yMax:28 }, // 东南大区域(荆楚→中原)
+  han:  { xMin:8,  xMax:22, yMin:14, yMax:28 }, // 南方大区域(韩地→中原)
+  wei:  { xMin:0,  xMax:14, yMin:14, yMax:28 }, // 西南大区域(魏梁→中原)
+};
+function randomSpawn(zone) {
+  // 在大区域内完全随机,可能靠前(近中原,危险)或靠后(远中原,安全)
+  const x = zone.xMin + Math.floor(Math.random() * (zone.xMax - zone.xMin + 1));
+  const y = zone.yMin + Math.floor(Math.random() * (zone.yMax - zone.yMin + 1));
+  return [
+    Math.max(1, Math.min(GRID_W - 2, x)),
+    Math.max(1, Math.min(GRID_H - 2, y))
+  ];
+}
+// 七国配置生成函数:每次 init 调用时重新随机出生点(重置时也会刷新)
+function generateNations() {
+  return [
+    (() => { const c = randomSpawn(NATION_ZONES.qin);  return { id:'qin',  name:'秦', color:'#8a6e45', bright:'#b89860', capital:c, cells:[c], troops:1200, food:1100, persona:{ war:90, expand:85, diplo:30 } }; })(),
+    (() => { const c = randomSpawn(NATION_ZONES.zhao); return { id:'zhao', name:'赵', color:'#3a7a52', bright:'#5aa878', capital:c, cells:[c], troops:1200, food:1100, persona:{ war:75, expand:70, diplo:45 } }; })(),
+    (() => { const c = randomSpawn(NATION_ZONES.yan);  return { id:'yan',  name:'燕', color:'#ad6c81', bright:'#d490a4', capital:c, cells:[c], troops:1200, food:1100, persona:{ war:80, expand:60, diplo:40 } }; })(),
+    (() => { const c = randomSpawn(NATION_ZONES.qi);   return { id:'qi',   name:'齐', color:'#327890', bright:'#5aa0b8', capital:c, cells:[c], troops:1200, food:1100, persona:{ war:40, expand:50, diplo:85 } }; })(),
+    (() => { const c = randomSpawn(NATION_ZONES.chu);  return { id:'chu',  name:'楚', color:'#8d3548', bright:'#b5556c', capital:c, cells:[c], troops:1200, food:1100, persona:{ war:60, expand:40, diplo:70 } }; })(),
+    (() => { const c = randomSpawn(NATION_ZONES.han);  return { id:'han',  name:'韩', color:'#6a6a6a', bright:'#919191', capital:c, cells:[c], troops:1200, food:1100, persona:{ war:50, expand:55, diplo:75 } }; })(),
+    (() => { const c = randomSpawn(NATION_ZONES.wei);  return { id:'wei',  name:'魏', color:'#6a5288', bright:'#9162ab', capital:c, cells:[c], troops:1200, food:1100, persona:{ war:70, expand:75, diplo:50 } }; })(),
+  ];
+}
+
+// ==================== Grid ====================
+class Grid {
+  constructor() {
+    this.cells = [];
+    for (let y = 0; y < GRID_H; y++) {
+      const row = [];
+      for (let x = 0; x < GRID_W; x++) row.push(this.makeCell(x, y));
+      this.cells.push(row);
+    }
+    this.generateTerrain();
+    this.granaries = [];  // 粮仓点
+  }
+  makeCell(x, y) {
+    return { x, y, terrain: Terrain.PLAIN, owner: null, garrison: 0,
+             contestingOwner: null, contestTurns: 0, fortress: false,
+             capital: false, city: false, granary: false, dirty: true };
+  }
+  get(x, y) {
+    if (x < 0 || x >= GRID_W || y < 0 || y >= GRID_H) return null;
+    return this.cells[y][x];
+  }
+  neighbors(x, y) {
+    return [ this.get(x-1, y), this.get(x+1, y), this.get(x, y-1), this.get(x, y+1) ].filter(c => c);
+  }
+  generateTerrain() {
+    // 山脉:3-5 个山脉群,每个 4-7 格连通山地(用 flood 方式扩展)
+    // 山地可被占领(防御加成),因此不阻挡扩张
+    const mountainGroups = 3 + Math.floor(Math.random() * 3);  // 3-5 个山脉
+    for (let g = 0; g < mountainGroups; g++) {
+      const sx = Math.floor(Math.random() * GRID_W);
+      const sy = Math.floor(Math.random() * GRID_H);
+      const targetSize = 4 + Math.floor(Math.random() * 4);  // 4-7 格
+      const placed = [{ x: sx, y: sy }];
+      const seen = new Set([`${sx},${sy}`]);
+      while (placed.length < targetSize) {
+        const seed = placed[Math.floor(Math.random() * placed.length)];
+        const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+        const [dx, dy] = dirs[Math.floor(Math.random() * 4)];
+        const nx = seed.x + dx, ny = seed.y + dy;
+        if (nx < 0 || nx >= GRID_W || ny < 0 || ny >= GRID_H) continue;
+        const k = `${nx},${ny}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        placed.push({ x: nx, y: ny });
+      }
+      for (const p of placed) {
+        const c = this.get(p.x, p.y);
+        if (c) c.terrain = Terrain.MOUNTAIN;
+      }
+    }
+    // 湖泊:随机分布,含若干 2x2 大湖 + 散布的 1 格小湖
+    // 2x2 大湖 2-3 个
+    const bigLakes = 2 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < bigLakes; i++) {
+      const lx = Math.floor(Math.random() * (GRID_W - 1));
+      const ly = Math.floor(Math.random() * (GRID_H - 1));
+      // 4 格全部改为湖泊
+      for (const [dx, dy] of [[0,0],[1,0],[0,1],[1,1]]) {
+        const c = this.get(lx + dx, ly + dy);
+        if (c) c.terrain = Terrain.LAKE;
+      }
+    }
+    // 1 格小湖散布 4-6 个
+    const smallLakes = 4 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < smallLakes; i++) {
+      const x = Math.floor(Math.random() * GRID_W);
+      const y = Math.floor(Math.random() * GRID_H);
+      const c = this.get(x, y);
+      if (c && c.terrain === Terrain.PLAIN) c.terrain = Terrain.LAKE;
+    }
+  }
+  initNations(nations) {
+    for (const n of nations) {
+      const [cx, cy] = n.capital;
+      const cap = this.get(cx, cy);
+      if (cap) {
+        // 强制将首都格改为平原(避免落在湖泊/山上)
+        cap.terrain = Terrain.PLAIN;
+        cap.owner = n.id;
+        cap.garrison = Math.floor(n.troops * 0.3);  // 首都驻军 30%
+        cap.capital = true;
+        cap.fortress = true;
+        cap.dirty = true;
+        // 连通性校验:若首都四邻全部不可通行(湖泊),强制开放至少 1 个邻居为平原
+        const nbrs = this.neighbors(cx, cy);
+        const blocked = nbrs.filter(c => c.terrain === Terrain.LAKE);
+        if (blocked.length === nbrs.length && nbrs.length > 0) {
+          nbrs[0].terrain = Terrain.PLAIN;
+          nbrs[0].dirty = true;
+        }
+      }
+    }
+    // 在地图上散布 6-8 个粮仓(资源点)
+    let placed = 0;
+    while (placed < 7) {
+      const x = Math.floor(Math.random() * GRID_W);
+      const y = Math.floor(Math.random() * GRID_H);
+      const c = this.get(x, y);
+      if (c && c.terrain === Terrain.PLAIN && !c.owner && !c.granary) {
+        c.granary = true;
+        this.granaries.push({ x, y });
+        placed++;
+      }
+    }
+  }
+  cellsOf(nationId) {
+    const out = [];
+    for (let y = 0; y < GRID_H; y++)
+      for (let x = 0; x < GRID_W; x++) {
+        const c = this.cells[y][x];
+        if (c.owner === nationId) out.push(c);
+      }
+    return out;
+  }
+  computeFrontLine(nationId) {
+    const out = [];
+    const owned = this.cellsOf(nationId);
+    // 国家领土很小(<=3 格)时,首都也参与前线(允许开局扩张)
+    const smallNation = owned.length <= 3;
+    for (const c of owned) {
+      if (c.capital && !smallNation) continue;  // 大国首都不外派进攻
+      const nbrs = this.neighbors(c.x, c.y);
+      const hasEnemy = nbrs.some(n => n.owner !== null && n.owner !== nationId && n.terrain !== Terrain.LAKE);
+      const hasNeutral = nbrs.some(n => n.owner === null && n.terrain !== Terrain.LAKE);  // 山地可被占领
+      if (hasEnemy || hasNeutral) out.push(c);
+    }
+    return out;
+  }
+  // BFS 检查首都是否仍属本国
+  capitalOwned(nationId, capitalCoord) {
+    const c = this.get(capitalCoord[0], capitalCoord[1]);
+    return c && c.owner === nationId;
+  }
+}
+
+// ==================== State ====================
+class State {
+  constructor(cfg) {
+    this.id = cfg.id;
+    this.name = cfg.name;
+    this.color = cfg.color;
+    this.bright = cfg.bright;
+    this.capital = cfg.capital;
+    this.troops = cfg.troops;
+    this.food = cfg.food;
+    this.initTroops = cfg.troops;
+    this.hatred = {};
+    this.truceUntil = 0;
+    this.cooldown = {};
+    this.frontLine = [];
+    this.lostRecently = 0;
+    this.ally = null;            // 保留:主盟友 id(用于外交跟踪)
+    this.allies = new Map();     // 多盟约:allyId -> 过期回合(最多 2 个)
+    this.allyUntil = 0;         // 盟约有效期截止回合(主盟约)
+    this.allyCooldown = 0;       // 撕毁盟约后冷却(不可立即再结)
+    this.warTargets = new Set();
+    this.neutralWith = new Set();  // 中立关系:既不结盟也不征战
+    this.alive = true;
+    this.cellCount = cfg.cells.length;
+    this.cityCount = 0;   // 初始无别城,游戏中动态建立
+    this.lastCityBuildTurn = 0;  // 上次建城回合
+    this.recentBattles = [];
+    this.primaryTarget = null;   // 单线作战:当前主攻目标
+    this.attackAnchor = null;    // 主攻锚点(己方边境中靠近主攻目标的格子,大军集结处)
+    this.anchorReadyTurn = 0;    // 锚点稳定回合(切换后需 8 回合调兵)
+    this.stance = 'attack';      // attack / defend
+    this.kills = 0;              // 战功统计
+    this.battlesWon = 0;
+    this.battlesLost = 0;
+    this.lastBattleTurn = 0;    // 上次参战回合(用于僵局检测)
+    this.lastReportTurn = 0;   // 上次普通战报回合(用于战报限速)
+    // === 三维国力 ===
+    this.morale = 100;            // 民心值 0-100
+    this.lastExpandTurn = 0;      // 上次扩张回合(用于检测扩张过快)
+    this.lastExpandCount = 0;     // 上次扩张格数
+    // === 差异化AI人格 ===
+    this.persona = cfg.persona || { war:60, expand:60, diplo:50 };
+    // === 将领/谋士系统 ===
+    this.generals = [{ name: this.randomGeneralName(), command: 50 + Math.floor(Math.random() * 20) }];
+    this.lastGeneralTurn = 0;     // 上次招募回合
+    // === 亡国/复国系统 ===
+    this.fallen = false;          // 是否已亡国
+    this.fallenBy = null;         // 被谁灭的
+    this.fallenTurn = 0;          // 亡国回合
+    this.isRump = false;          // 是否为残余分裂小国
+    this.originNation = null;     // 残余国的起源国(用于复国)
+    this.lastRelocateTurn = 0;     // 上次迁都回合(用于迁都冷却)
+    // === 行军系统 ===
+    // marching 队列:在途兵力,需 N 回合抵达目的地
+    // 元素: {fromX, fromY, toX, toY, startTurn, arriveTurn, troops}
+    this.marching = [];
+  }
+  randomGeneralName() {
+    const surnames = ['王','李','张','陈','刘','杨','赵','黄','周','吴','徐','孙','马','朱','胡','林','郭','何','高','罗'];
+    const given = ['起','戎','骧','厉','震','猛','坚','毅','渊','策','衡','泰','岳','烈','文','武','威','德','义','信'];
+    return surnames[Math.floor(Math.random() * surnames.length)] + given[Math.floor(Math.random() * given.length)];
+  }
+  // 主将统帅力(取最高)
+  topGeneral() { return this.generals.reduce((m, g) => g.command > m.command ? g : m, this.generals[0]); }
+  // 经济力:领土 + 别城产出(每平原格 10, 山脉 5, 别城 +30)
+  economicPower() {
+    let base = 0;
+    const cells = this.cellCount;
+    base = cells * 10 + this.cityCount * 30;
+    return base + this.food * 0.1;
+  }
+  // 军事力:兵力 × (1 + 主将统帅力/200)
+  militaryPower() {
+    const g = this.topGeneral();
+    return this.troops * (1 + g.command / 200);
+  }
+  // 国力总值 = (经济 × 0.4) + (军事 × 0.5) + (民心 × 0.1 × scale)
+  power() {
+    if (!this.alive) return -99999;
+    const eco = this.economicPower();
+    const mil = this.militaryPower();
+    const mor = this.morale;  // 0-100
+    return eco * 0.4 + mil * 0.5 + mor * 2;
+  }
+  topHatred() {
+    let max = 0, target = null;
+    for (const [k, v] of Object.entries(this.hatred))
+      if (v > max && !this.allies.has(k)) { max = v; target = k; }
+    return { target, value: max };
+  }
+  // 盟约是否仍有效
+  allyActive(turn) { return this.allies.size > 0; }
+  // 单方面撕毁某一盟约
+  breakAlliance(turn, allyId, reason) {
+    if (!this.allies.has(allyId)) return;
+    this.allies.delete(allyId);
+    const other = this._allyCooldownTurn = turn + 10;  // 该国撕毁后冷却
+    this.allyCooldown = turn + 10;
+    if (this.ally === allyId) {
+      this.ally = this.allies.size > 0 ? this.allies.keys().next().value : null;
+      this.allyUntil = this.allies.size > 0 ? this.allies.get(this.ally) : 0;
+    }
+  }
+  // 检查是否与某国是盟友
+  isAllyOf(id) { return this.allies.has(id); }
+  // 检查是否与某国中立(既不结盟也不征战)
+  isNeutralWith(id) { return this.neutralWith.has(id); }
+}
+
+// ==================== BattleEngine ====================
+class BattleEngine {
+  constructor(grid, states, reportCb) {
+    this.grid = grid;
+    this.states = states;
+    this.report = reportCb;
+    this.turn = 0;
+    this.particles = [];
+    this.maxParticles = 280;
+    this.particleIdx = 0;
+  }
+  tick() {
+    this.turn++;
+    // 1. 前线更新 + 每格距前线距离(用于颜色深浅)
+    for (const s of this.states.values()) {
+      if (!s.alive) continue;
+      s.frontLine = this.grid.computeFrontLine(s.id);
+    }
+    // 计算每格距己方前线的最短距离(0=前线,越大越后方)
+    for (const s of this.states.values()) {
+      if (!s.alive) continue;
+      const cells = this.grid.cellsOf(s.id);
+      for (const c of cells) c._frontDist = Infinity;
+      // BFS 从前线向内扩散
+      const queue = [];
+      for (const c of s.frontLine) { c._frontDist = 0; queue.push(c); }
+      let head = 0;
+      while (head < queue.length) {
+        const cur = queue[head++];
+        for (const n of this.grid.neighbors(cur.x, cur.y)) {
+          if (n.owner === s.id && n._frontDist > cur._frontDist + 1) {
+            n._frontDist = cur._frontDist + 1;
+            queue.push(n);
+          }
+        }
+      }
+      // 距前线无穷大(孤岛)归为远后方
+      for (const c of cells) {
+        if (c._frontDist === Infinity) c._frontDist = 99;
+        c.dirty = true;  // 颜色深浅依赖距前线距离,每回合刷新
+      }
+    }
+    // 2. 交战格拉锯
+    this.processContested();
+    // 3. 进攻(单线 AI)
+    this.processAttacks();
+    // 4. 溃败
+    this.processRout();
+    // 4.5 行军到达:在途兵力抵达目的地
+    this.processMarching();
+    // 5. 资源/恢复
+    this.processRecovery();
+    // 6. 动态建城(每 100 回合每国建一座)
+    this.processCityBuilding();
+    // 7. 历史事件(每 50 回合)
+    this.processHistoricalEvents();
+    // 8. 将领招募(每 100 回合)
+    this.processGeneralRecruit();
+    // 9. 民心自然回升
+    this.processMorale();
+    // 10. 迁都检查(每 5 回合)
+    if (this.turn % 5 === 0) this.checkCapitalRelocation();
+    // 11. 复国检查(每回合)
+    this.checkRestoration();
+    // 12. 粒子
+    this.updateParticles();
+  }
+  // 动态建城:每 100 回合每国可建一座城,地点在本国领土上完全随机
+  processCityBuilding() {
+    for (const s of this.states.values()) {
+      if (!s.alive) continue;
+      // 每 100 回合建一座城(用 lastCityBuildTurn 跟踪)
+      if (this.turn - (s.lastCityBuildTurn || 0) < 100) continue;
+      // 在本国领土中完全随机选一个非首都、非已建城的格子
+      const candidates = this.grid.cellsOf(s.id)
+        .filter(c => !c.capital && !c.city && c.terrain !== Terrain.LAKE);
+      if (candidates.length === 0) continue;
+      const target = candidates[Math.floor(Math.random() * candidates.length)];
+      target.city = true;
+      target.fortress = true;
+      target.garrison += Math.floor(s.troops * 0.03);
+      s.cityCount++;
+      s.lastCityBuildTurn = this.turn;
+      target.dirty = true;
+    }
+  }
+  // 历史事件系统:每 50 回合随机触发 1 次
+  processHistoricalEvents() {
+    if (this.turn % 50 !== 0) return;
+    if (Math.random() > 0.6) return;  // 60% 触发概率
+    const alive = Array.from(this.states.values()).filter(s => s.alive);
+    if (alive.length < 2) return;
+    const events = [
+      { name: '商鞅变法', apply: (s) => { s.food += Math.floor(s.food * 0.3); s.morale = Math.max(0, s.morale - 20); },
+        desc: (s) => `${s.name}行变法,经济力+30%,民心-20%` },
+      { name: '天灾', apply: (s) => { s.food = Math.max(0, s.food - 200); s.morale = Math.max(0, s.morale - 15); },
+        desc: (s) => `${s.name}遭天灾,粮草-200,民心-15%` },
+      { name: '明君', apply: (s) => { s.morale = Math.min(100, s.morale + 25); s.troops += 100; },
+        desc: (s) => `${s.name}出明君,民心+25,兵力+100` },
+      { name: '丰收', apply: (s) => { s.food += 400; },
+        desc: (s) => `${s.name}五谷丰登,粮草+400` },
+      { name: '名将投奔', apply: (s) => { s.generals.push({ name: s.randomGeneralName(), command: 70 + Math.floor(Math.random() * 20) }); },
+        desc: (s) => `${s.name}得名将投奔,统帅力+${s.generals[s.generals.length-1].command}` },
+      { name: '内乱', apply: (s) => { s.morale = Math.max(0, s.morale - 30); s.troops = Math.max(s.initTroops * MIN_TROOPS_RATIO, s.troops - 80); },
+        desc: (s) => `${s.name}内乱起,民心-30,兵力-80` },
+    ];
+    const ev = events[Math.floor(Math.random() * events.length)];
+    const target = alive[Math.floor(Math.random() * alive.length)];
+    ev.apply(target);
+    this.report(this.turn, 'event', `[${ev.name}] ${ev.desc(target)}`, target);
+  }
+  // 将领招募:每 100 回合每国可招 1 名(统帅力 50-90 随机)
+  processGeneralRecruit() {
+    for (const s of this.states.values()) {
+      if (!s.alive) continue;
+      if (this.turn - s.lastGeneralTurn < 100) continue;
+      if (s.generals.length >= 3) continue;  // 最多 3 名
+      const cmd = 50 + Math.floor(Math.random() * 40);
+      s.generals.push({ name: s.randomGeneralName(), command: cmd });
+      s.lastGeneralTurn = this.turn;
+    }
+  }
+  // 民心自然回升(+0.5/回合,封顶 100)
+  processMorale() {
+    for (const s of this.states.values()) {
+      if (!s.alive) continue;
+      // 粮草为 0 时民心持续下降
+      if (s.food <= 0) {
+        s.morale = Math.max(0, s.morale - 0.5);
+      } else {
+        s.morale = Math.min(100, s.morale + 0.3);
+      }
+      // 民心 < 50 触发叛乱:5% 概率失去 1 格(不战报,仅释放民怨)
+      if (s.morale < 50 && Math.random() < 0.05 && s.cellCount > 1) {
+        const cells = this.grid.cellsOf(s.id).filter(c => !c.capital && !c.city);
+        if (cells.length > 0) {
+          const c = cells[Math.floor(Math.random() * cells.length)];
+          c.owner = null;
+          c.garrison = 0;
+          c.dirty = true;
+          s.cellCount--;
+          s.morale = Math.min(100, s.morale + 10);  // 叛乱后释放部分民怨
+        }
+      }
+    }
+  }
+  processContested() {
+    for (let y = 0; y < GRID_H; y++)
+      for (let x = 0; x < GRID_W; x++) {
+        const c = this.grid.get(x, y);
+        if (!c.contestingOwner) continue;
+        const attacker = this.states.get(c.contestingOwner);
+        const defender = this.states.get(c.owner);
+        if (!attacker || !attacker.alive || !defender || !defender.alive) {
+          c.contestingOwner = null; c.contestTurns = 0; c.dirty = true; continue;
+        }
+        // 强化国力差距:大国对小国压倒性优势
+        const defBonus = c.fortress ? 1.2 : (c.capital ? 1.8 : 1.0);
+        const defPower = c.garrison * defBonus * (0.85 + Math.random() * 0.3);
+        // 国力比值浮动:攻击力 = 兵力A × (A/B)^1.5 × 0.15
+        // 强国 2:1 时攻击力为 ~0.42A,弱国 1:2 时仅 ~0.05A,确保弱国难以反击
+        const ratio = attacker.troops / Math.max(1, defender.troops);
+        const powerRatio = Math.pow(ratio, 1.5);
+        const atkPower = attacker.troops * 0.15 * powerRatio * (0.85 + Math.random() * 0.3);
+        const lossA = defPower * 0.1;
+        const lossB = atkPower * 0.3;
+        attacker.troops = Math.max(0, attacker.troops - lossA);
+        c.garrison = Math.max(0, c.garrison - lossB);
+        defender.troops = Math.max(0, defender.troops - lossB * 0.5);
+        // 记录参战回合(用于僵局检测)
+        attacker.lastBattleTurn = this.turn;
+        defender.lastBattleTurn = this.turn;
+        c.contestTurns++;
+        c.dirty = true;
+        this.spawnParticles(x, y, 2);
+        if (c.contestTurns >= CONTEST_TURNS) {
+          // 占领
+          const oldOwner = c.owner;
+          c.owner = attacker.id;
+          c.garrison = Math.floor(attacker.troops * 0.05);
+          attacker.troops -= c.garrison;
+          c.contestingOwner = null;
+          c.contestTurns = 0;
+          attacker.cellCount++;
+          defender.cellCount--;
+          // 别城被攻占后自动消除(不归攻方,变为普通空地)
+          if (c.city) {
+            c.city = false;
+            c.fortress = false;
+            defender.cityCount = Math.max(0, defender.cityCount - 1);
+          }
+          defender.lostRecently++;
+          // 仇恨动态:侵占领土 +12;若为非战争目标 +25(挑衅性扩张)
+          const isWarTarget = defender.warTargets.has(attacker.id);
+          const hateGain = HATRED_PER_CELL + (isWarTarget ? 0 : 13);
+          defender.hatred[attacker.id] = (defender.hatred[attacker.id] || 0) + hateGain;
+          attacker.kills++;
+          attacker.battlesWon++;
+          defender.battlesLost++;
+          // 民心:被占领土 -3
+          defender.morale = Math.max(0, defender.morale - 3);
+          // 首都被占 -> 触发 eliminate(分裂/亡国逻辑)
+          if (c.capital && c.owner !== oldOwner) {
+            // eliminate 内部会处理首都格归属和降级
+            this.eliminate(defender, attacker);
+            // 历史风格描述:根据兵力差给出不同文案
+            const ratio = attacker.troops / Math.max(1, defender.initTroops);
+            let capText;
+            if (ratio > 2) capText = `${attacker.name}铁骑踏破${defender.name}都城!${defender.name}社稷倾覆,余部分裂!`;
+            else if (ratio < 0.7) capText = `${attacker.name}孤注一掷,血战攻破${defender.name}都城!${defender.name}余部四散!`;
+            else capText = `${attacker.name}军攻破${defender.name}都城!${defender.name}社稷倾覆,余部分裂立国!`;
+            this.report(this.turn, 'capital', capText, attacker);
+          } else if (c.city && Math.random() < 0.4) {
+            // 拔城战报:根据兵力差给出不同描述
+            const ratio = attacker.troops / Math.max(1, defender.troops);
+            const cityTexts = ratio > 2
+              ? [`${attacker.name}锐士如虎,拔${defender.name}城一座,守军溃散`]
+              : [`${attacker.name}军拔${defender.name}城一座`];
+            this.report(this.turn, 'victory', cityTexts[0], attacker);
+          }
+          if (defender.troops < defender.initTroops * SAFE_LINE_RATIO) {
+            defender.truceUntil = this.turn + TRUCE_TURNS;
+          }
+          // 防御求援:通知盟友攻击者威胁
+          this.requestDefense(defender, attacker);
+          this.spawnParticles(x, y, 10);
+        }
+      }
+  }
+  // 单线作战 AI:集中兵力攻一个主目标
+  processAttacks() {
+    const aliveCount = Array.from(this.states.values()).filter(s => s.alive).length;
+    const order = Array.from(this.states.values())
+      .filter(s => s.alive)
+      .sort((a, b) => b.power() - a.power());
+    for (const s of order) {
+      if (s.frontLine.length === 0) continue;
+      const inTruce = this.turn < s.truceUntil;
+      // 决定主攻目标(每 6 回合重评一次)
+      if (this.turn % 6 === 0 || !this.isPrimaryTargetValid(s)) {
+        this.pickPrimaryTarget(s);
+      }
+      // 兵力极低时进入防御;否则进攻
+      if (s.troops < s.initTroops * SAFE_LINE_RATIO) {
+        s.stance = 'defend';
+      } else {
+        s.stance = 'attack';
+      }
+      // 后期(≤4国)僵局打破阈值缩短:更易触发强制进攻
+      const stalemateThreshold = aliveCount <= 4 ? 5 : STALEMATE_TURNS;
+      const stalemate = (this.turn - s.lastBattleTurn) > stalemateThreshold;
+      // 单线作战:非强国只允许 1 次进攻;强国(兵力>平均 1.5 倍)允许多线
+      const avgPower = Array.from(this.states.values())
+        .filter(s2 => s2.alive)
+        .reduce((sum, s2) => sum + s2.power(), 0) / Array.from(this.states.values()).filter(s2 => s2.alive).length;
+      const isStrong = s.power() > avgPower * 1.5;
+      let attempts;
+      if (aliveCount <= 3) {
+        // 终局:全员多线进攻,无视休战/防御
+        attempts = Math.min(4, s.frontLine.length);
+        s.stance = 'attack';
+      } else if (stalemate) {
+        attempts = isStrong ? Math.min(3, s.frontLine.length) : Math.min(2, s.frontLine.length);
+        s.stance = 'attack';
+      } else if (inTruce || s.stance === 'defend') {
+        attempts = 1;
+      } else {
+        // 普通国家只单线进攻;强国可多线
+        attempts = isStrong ? Math.min(3, s.frontLine.length) : 1;
+      }
+      let attacked = 0;
+      for (let i = 0; i < attempts * 3 && attacked < attempts; i++) {
+        const cell = s.frontLine[Math.floor(Math.random() * s.frontLine.length)];
+        if (this.tryAttack(s, cell)) attacked++;
+      }
+    }
+  }
+  isPrimaryTargetValid(s) {
+    if (!s.primaryTarget) return false;
+    const t = this.states.get(s.primaryTarget);
+    if (!t || !t.alive) return false;
+    // 是否仍有接壤前线
+    return s.frontLine.some(c =>
+      this.grid.neighbors(c.x, c.y).some(n => n.owner === s.primaryTarget)
+    );
+  }
+  // 选择主攻目标:仇恨最高 > 接壤最弱 > 距离最近
+  pickPrimaryTarget(s) {
+    // 残余小国优先攻占旧都(复国动机)
+    if (s.isRump && s.originNation) {
+      const origin = this.states.get(s.originNation);
+      if (origin && origin.fallen) {
+        const capCell = this.grid.get(origin.capital[0], origin.capital[1]);
+        if (capCell && capCell.owner !== s.id) {
+          // 旧都被同源分裂国持有 → 复国机制会自动整合,无需攻击
+          const holder = this.states.get(capCell.owner);
+          if (holder && holder.isRump && holder.originNation === s.originNation) {
+            // 同源已占旧都,不设攻击目标,走正常选目标流程
+          } else {
+            // 旧都被异国持有,设为攻击目标
+            s.primaryTarget = capCell.owner;
+            let best = null, bestDist = Infinity;
+            for (const c of s.frontLine) {
+              const d = Math.abs(c.x - origin.capital[0]) + Math.abs(c.y - origin.capital[1]);
+              if (d < bestDist) { bestDist = d; best = c; }
+            }
+            s.attackAnchor = best ? { x: best.x, y: best.y } : null;
+            s.anchorReadyTurn = this.turn + 4;
+            return;
+          }
+        }
+      }
+    }
+    const top = s.topHatred();
+    let candidates = [];
+    // 优先仇恨目标
+    if (top.target) {
+      const t = this.states.get(top.target);
+      if (t && t.alive) candidates.push(top.target);
+    }
+    // 接壤国(排除盟友、中立国、同源分裂国 - 同源不互攻)
+    const neighbors = new Set();
+    for (const c of s.frontLine) {
+      for (const n of this.grid.neighbors(c.x, c.y)) {
+        if (n.owner && n.owner !== s.id && !s.allies.has(n.owner) && !s.neutralWith.has(n.owner)) {
+          // 同源分裂国之间不互攻(都是同一原国的残余)
+          const ns = this.states.get(n.owner);
+          if (ns && s.isRump && ns.isRump && s.originNation && s.originNation === ns.originNation) continue;
+          neighbors.add(n.owner);
+        }
+      }
+    }
+    for (const id of neighbors) {
+      if (!candidates.includes(id)) candidates.push(id);
+    }
+    if (candidates.length === 0) { s.primaryTarget = null; s.attackAnchor = null; s.anchorReadyTurn = 0; return; }
+    // === AI 战略深度评分 ===
+    // 1. 国力差距(优先弱国):对方国力越低,分数越低(优先攻)
+    // 2. 地缘价值:对方领土内关隘/粮仓/城池越多,战略价值越高,优先攻
+    // 3. 接壤长度:接壤越长越易入侵(已有前线可投入),优先攻
+    // 4. 薄弱区:对方锚点远离己方前线,说明那方向防御薄弱,优先攻
+    // 5. 盟友协同:若盟友已对此国宣战,优先加入围攻
+    candidates.sort((a, b) => {
+      const sa = this.states.get(a), sb = this.states.get(b);
+      // 1. 国力差距(权重最大)
+      let scoreA = (sa.power() - s.power()) * 1.0;
+      let scoreB = (sb.power() - s.power()) * 1.0;
+      // 2. 地缘价值:统计对方领土内关隘/粮仓/城池
+      const valA = this.nationStrategicValue(sa);
+      const valB = this.nationStrategicValue(sb);
+      scoreA -= valA * 25;  // 战略价值越高 → 分数越低 → 优先攻
+      scoreB -= valB * 25;
+      // 3. 接壤长度(边境格数)
+      let borderA = 0, borderB = 0;
+      for (const c of s.frontLine) {
+        for (const n of this.grid.neighbors(c.x, c.y)) {
+          if (n.owner === a) borderA++;
+          if (n.owner === b) borderB++;
+        }
+      }
+      scoreA -= borderA * 3;  // 接壤越长越优先
+      scoreB -= borderB * 3;
+      // 4. 薄弱区加成
+      if (sa.attackAnchor) {
+        let minDistA = Infinity;
+        for (const c of s.frontLine) {
+          const d = Math.abs(c.x - sa.attackAnchor.x) + Math.abs(c.y - sa.attackAnchor.y);
+          if (d < minDistA) minDistA = d;
+        }
+        scoreA -= minDistA * 8;
+      }
+      if (sb.attackAnchor) {
+        let minDistB = Infinity;
+        for (const c of s.frontLine) {
+          const d = Math.abs(c.x - sb.attackAnchor.x) + Math.abs(c.y - sb.attackAnchor.y);
+          if (d < minDistB) minDistB = d;
+        }
+        scoreB -= minDistB * 8;
+      }
+      // 5. 盟友协同:盟友已对此国宣战 → 加分(协同围攻)
+      const allyAtWarA = this.countAlliesAtWarWith(s, a);
+      const allyAtWarB = this.countAlliesAtWarWith(s, b);
+      scoreA -= allyAtWarA * 80;  // 已有盟友围攻 → 优先加入
+      scoreB -= allyAtWarB * 80;
+      return scoreA - scoreB;
+    });
+    s.primaryTarget = candidates[0];
+    // 选定主攻锚点:己方边境中最靠近 primaryTarget 首都的格子
+    // 此锚点附近半径 4 格内的边境格才发起进攻,其他边境格只防守
+    const target = this.states.get(s.primaryTarget);
+    if (target) {
+      const [tx, ty] = target.capital;
+      let best = null, bestDist = Infinity;
+      for (const c of s.frontLine) {
+        // 必须邻接 primaryTarget 的格
+        const isAdjacent = this.grid.neighbors(c.x, c.y).some(n => n.owner === s.primaryTarget);
+        if (!isAdjacent) continue;
+        const d = Math.abs(c.x - tx) + Math.abs(c.y - ty);
+        if (d < bestDist) { bestDist = d; best = c; }
+      }
+      const newAnchor = best ? { x: best.x, y: best.y } : null;
+      // 调兵耗时:切换锚点需 8 回合稳定(调兵集结),且消耗粮草 200
+      // 稳定前(transitioning)锚点附近兵力尚未集中,仅发挥 50% 效能
+      if (newAnchor && (!s.attackAnchor || s.attackAnchor.x !== newAnchor.x || s.attackAnchor.y !== newAnchor.y)) {
+        s.attackAnchor = newAnchor;
+        s.anchorReadyTurn = this.turn + 8;  // 8 回合后稳定
+        if (s.food >= 200) {
+          s.food -= 200;  // 调兵消耗粮草
+        }
+        // 派遣行军:从首都向新锚点调兵(非瞬间抵达,有行军延迟)
+        const [cx, cy] = s.capital;
+        this.dispatchMarching(s, cx, cy, newAnchor.x, newAnchor.y, Math.floor(s.troops * 0.18));
+      }
+    }
+  }
+  // 计算某国的战略价值(关隘+粮仓+城池+首都)
+  // 用于 AI 优先攻占高价值目标
+  nationStrategicValue(s) {
+    if (!s || !s.alive) return 0;
+    let v = 0;
+    for (const c of this.grid.cellsOf(s.id)) {
+      if (c.capital) v += 3;       // 首都最高价值
+      else if (c.city) v += 1.5;   // 别城
+      if (c.granary) v += 1;       // 粮仓
+      if (c.fortress && !c.capital && !c.city) v += 0.8;  // 关隘(防御加成地)
+    }
+    return v;
+  }
+  // 统计 s 的盟友中已有多少对 targetId 宣战(用于协同围攻)
+  countAlliesAtWarWith(s, targetId) {
+    let n = 0;
+    for (const allyId of s.allies.keys()) {
+      const ally = this.states.get(allyId);
+      if (ally && ally.alive && ally.warTargets.has(targetId)) n++;
+    }
+    return n;
+  }
+  tryAttack(attacker, fromCell) {
+    // 补给线判定:fromCell 必须是己方领土(由 computeFrontLine 保证,这里再校验)
+    if (fromCell.owner !== attacker.id) return false;
+    const nbrs = this.grid.neighbors(fromCell.x, fromCell.y)
+      .filter(n => {
+        if (n.owner === attacker.id) return false;
+        if (n.terrain === Terrain.LAKE) return false;
+        // 同源分裂国不互攻(都是同一原国的残余)
+        if (n.owner && attacker.isRump && attacker.originNation) {
+          const ns = this.states.get(n.owner);
+          if (ns && ns.isRump && ns.originNation === attacker.originNation) return false;
+        }
+        return true;
+      });
+    if (nbrs.length === 0) return false;
+    // 集中兵力:某片区域大军进攻,其他区域不动
+    // 只有主攻锚点附近(曼哈顿距离 ≤4)的边境格才主动进攻
+    // 其他边境格:若邻接敌国则有 25% 概率自卫反击,空地仍可占领
+    if (attacker.attackAnchor) {
+      const d = Math.abs(fromCell.x - attacker.attackAnchor.x) + Math.abs(fromCell.y - attacker.attackAnchor.y);
+      const hasHostile = nbrs.some(n => n.owner && n.owner !== attacker.id && !attacker.allies.has(n.owner));
+      if (d > 4 && hasHostile) {
+        // 非主攻方向且邻接敌国:25% 概率自卫反击
+        if (Math.random() > 0.25) return false;
+      }
+    }
+    // 分阶段推进:基于对该敌国的占领深度决定可进攻的格子数
+    // 试探期(占敌国 ≤2 格):仅可攻 1 处边境
+    // 突破期(占敌国 3-8 格):可同时推进 2 处
+    // 深入期(占敌国 ≥9 格):可分兵多路深入(无限制)
+    const enemyId = nbrs.find(n => n.owner)?.owner;
+    if (enemyId && enemyId !== attacker.id) {
+      // 计算攻方已占领敌国领土的接壤格数(深入度)
+      let borderCount = 0;
+      for (const c of this.grid.cellsOf(attacker.id)) {
+        for (const nb of this.grid.neighbors(c.x, c.y)) {
+          if (nb.owner === enemyId) { borderCount++; break; }
+        }
+      }
+      // 试探期且已有交战格 -> 不开新战线,延续旧战线
+      if (borderCount <= 2) {
+        const contesting = nbrs.filter(n => n.contestingOwner === attacker.id);
+        if (contesting.length > 0) {
+          nbrs.length = 0;
+          nbrs.push(...contesting);
+        }
+      }
+    }
+    // 单线优先:优先攻击 primaryTarget 的格子,其次空地/粮仓
+    let target = null;
+    if (attacker.primaryTarget) {
+      const pt = nbrs.filter(n => n.owner === attacker.primaryTarget);
+      if (pt.length > 0) {
+        // 选最弱的(兵最少 / 是粮仓 / 是首都优先)
+        target = pt.sort((a, b) => {
+          const pa = (a.capital ? -1000 : 0) + (a.granary ? -100 : 0) + a.garrison;
+          const pb = (b.capital ? -1000 : 0) + (b.granary ? -100 : 0) + b.garrison;
+          return pa - pb;
+        })[0];
+      }
+    }
+    if (!target) {
+      // 粮仓优先
+      const gran = nbrs.find(n => n.granary && n.owner === null);
+      if (gran) target = gran;
+      else if (attacker.stance === 'defend') {
+        // 防御态势:优先占空地,但有 40% 概率攻击接壤弱敌(自卫反击)
+        const empty = nbrs.filter(n => n.owner === null);
+        const hostile = nbrs.filter(n => n.owner !== null && !attacker.allies.has(n.owner));
+        if (hostile.length > 0 && (Math.random() < 0.4 || empty.length === 0)) {
+          target = hostile.sort((a, b) => a.garrison - b.garrison)[0];
+        } else if (empty.length > 0) {
+          target = empty[Math.floor(Math.random() * empty.length)];
+        }
+      } else {
+        // 进攻态势:占空地或打敌
+        const empties = nbrs.filter(n => n.owner === null);
+        if (empties.length > 0 && Math.random() < 0.5) {
+          target = empties[Math.floor(Math.random() * empties.length)];
+        } else {
+          const hostile = nbrs.filter(n => n.owner !== null && !attacker.allies.has(n.owner));
+          if (hostile.length > 0) target = hostile.sort((a, b) => a.garrison - b.garrison)[0];
+        }
+      }
+    }
+    if (!target) return false;
+    // 中立关系:既不结盟也不征战。中立国之间 90% 概率不进攻
+    // (保留 10% 概率开战,以防游戏陷入完全和平而无法打破僵局)
+    if (target.owner && attacker.neutralWith.has(target.owner)) {
+      if (Math.random() < 0.9) return false;
+      // 主动进攻中立国 -> 撕毁中立(双方)
+      attacker.neutralWith.delete(target.owner);
+      const defState = this.states.get(target.owner);
+      if (defState) defState.neutralWith.delete(attacker.id);
+    }
+    const key = `${target.x},${target.y}`;
+    if ((attacker.cooldown[key] || 0) > this.turn) return false;
+
+    const terrainMod = TerrainMod[target.terrain] || 1.0;
+    // 强化国力作用:大国对小国压倒性优势
+    const defender = target.owner ? this.states.get(target.owner) : null;
+    const defTroopsTotal = defender ? defender.troops : 0;
+    // 国力比值浮动:攻击力 = 兵力A × (A/B)^1.5 × 0.16
+    // 强国 2:1 时攻击力为 ~0.45A,弱国 1:2 时仅 ~0.056A,确保弱国难以反击
+    const ratio = attacker.troops / Math.max(1, defTroopsTotal || 1);
+    const powerRatio = Math.pow(ratio, 1.5);
+    const atkForce = (attacker.troops * 0.16) * powerRatio * (0.85 + Math.random() * 0.3) * terrainMod;
+    const defBonus = target.fortress ? 1.2 : (target.capital ? 1.8 : 1.0);
+    const defForce = target.owner
+      ? target.garrison * defBonus * (0.9 + Math.random() * 0.2)
+      : (target.granary ? 30 : 8);
+
+    // 城池(别城/首都)攻击:战胜率直接由国力比值决定,扩大国力差距体现
+    // 胜率公式 P = powerRatio / (powerRatio + 1)
+    //   国力 2:1 -> P≈0.74;3:1 -> P≈0.84;5:1 -> P≈0.92;1:2 -> P≈0.15
+    // 配合 fortress/capital 加成降低胜率(城池难攻)
+    let win;
+    if (target.owner && (target.city || target.capital)) {
+      // 城池战胜率:纯国力比值 P = (A/B)^1.5 / ((A/B)^1.5 + 1)
+      // 速战速决:一次判定胜负,不做拉锯
+      const aPower = attacker.power();
+      const bPower = defender.power();
+      const r = aPower / Math.max(1, bPower);
+      const pr = Math.pow(r, 1.5);
+      // 首都难度系数 0.7(更难),别城 0.85
+      const capMod = target.capital ? 0.7 : 0.85;
+      const winProb = (pr * capMod) / (pr + 1);
+      // 压倒性国力(>2倍)直接碾压,速战速决
+      const overwhelming = aPower > bPower * 2;
+      win = overwhelming ? true : Math.random() < winProb;
+    } else {
+      // 普通格:攻防成功率与双方局部兵力差挂钩
+      // 局部兵力 = 攻方驻军 vs 防方驻军(从 fromCell 抽调 vs target 驻守)
+      const localAtk = fromCell.garrison + attacker.troops * 0.1;  // 进攻方:边境驻军 + 10% 中央兵力支援
+      const localDef = target.garrison * defBonus;
+      // 胜率 P = atkRatio / (atkRatio + 1), atkRatio = (localAtk/localDef)^1.3
+      const localRatio = localAtk / Math.max(1, localDef);
+      const localPr = Math.pow(localRatio, 1.3);
+      const localWinProb = localPr / (localPr + 1);
+      // 压倒性兵力(>2倍)直接碾压
+      const overwhelming = localAtk > localDef * 2;
+      win = overwhelming ? true : Math.random() < localWinProb;
+    }
+
+    // 国力损耗比:双方都付出与对方国力相关的消耗(杀敌一千自损八百)
+    // 进攻方损耗 = 防守方国力 × 0.0008(防守方越强,攻方损失越大)
+    // 防守方损耗上限 = 自身兵力 30%(弱国即使输也保留主力,避免秒灭)
+    const defPower = defender ? defender.power() : 100;
+    const lossA = Math.min(attacker.troops * 0.12, defPower * 0.001 + defForce * 0.12);
+    const lossB = Math.min(target.garrison, atkForce * 0.4);
+    const defTroopsLossCap = defender ? defender.troops * 0.30 : Infinity;  // 弱国保留 70% 主力
+    attacker.troops = Math.max(0, attacker.troops - lossA);
+    if (target.owner && defender) {
+      const defTroopsLoss = Math.min(defTroopsLossCap, lossB * 0.5);
+      target.garrison = Math.max(0, target.garrison - lossB);
+      defender.troops = Math.max(0, defender.troops - defTroopsLoss);
+      // 记录参战回合(用于僵局检测)
+      attacker.lastBattleTurn = this.turn;
+      defender.lastBattleTurn = this.turn;
+      this.spawnParticles(target.x, target.y, 3);
+    }
+    if (win) {
+      if (target.owner === null) {
+        target.owner = attacker.id;
+        target.garrison = Math.floor(attacker.troops * 0.04);
+        attacker.troops -= target.garrison;
+        attacker.cellCount++;
+        if (target.granary) {
+          attacker.food += 300;
+          this.report(this.turn, 'victory', `${attacker.name}军夺取粮仓,得粮三百石`, attacker);
+        }
+        target.dirty = true;
+        this.spawnParticles(target.x, target.y, 2);
+      } else if (target.city || target.capital) {
+        // 城池/首都:速战速决,胜利直接占领(无拉锯)
+        const oldOwner = target.owner;
+        const def = this.states.get(oldOwner);
+        // 别城被占自动消除,首都降级为普通城
+        if (target.capital) {
+          target.capital = false;
+          target.city = true;
+          target.fortress = true;
+          attacker.cityCount++;
+          this.eliminate(def, attacker);
+          const ratio = attacker.troops / Math.max(1, def.initTroops);
+          const capText = ratio > 2
+            ? `${attacker.name}铁骑踏破${def.name}都城!${def.name}社稷倾覆,宗庙夷为废墟!`
+            : ratio < 0.7
+            ? `${attacker.name}孤注一掷,血战攻破${def.name}都城!${def.name}亡!`
+            : `${attacker.name}军攻破${def.name}都城!${def.name}社稷倾覆!`;
+          this.report(this.turn, 'capital', capText, attacker);
+        } else {
+          target.city = false;
+          target.fortress = false;
+          def.cityCount = Math.max(0, def.cityCount - 1);
+          const ratio = attacker.troops / Math.max(1, def.troops);
+          const text = ratio > 2
+            ? `${attacker.name}锐士如虎,拔${def.name}城一座,守军溃散`
+            : `${attacker.name}军拔${def.name}城一座`;
+          this.report(this.turn, 'victory', text, attacker);
+        }
+        target.owner = attacker.id;
+        target.garrison = Math.floor(attacker.troops * 0.06);
+        attacker.troops -= target.garrison;
+        attacker.cellCount++;
+        def.cellCount = Math.max(0, def.cellCount - 1);
+        def.morale = Math.max(0, def.morale - 5);
+        // 仇恨动态:侵占 +12,非战争目标 +25
+        const isWarTarget = def.warTargets.has(attacker.id);
+        const hateGain = 12 + (isWarTarget ? 0 : 13);
+        def.hatred[attacker.id] = (def.hatred[attacker.id] || 0) + hateGain;
+        attacker.kills++;
+        attacker.battlesWon++;
+        def.battlesLost++;
+        target.dirty = true;
+        this.spawnParticles(target.x, target.y, 5);
+      } else {
+        // 普通敌国格:进入交格拉锯
+        if (!target.contestingOwner) {
+          target.contestingOwner = attacker.id;
+          target.contestTurns = 0;
+          target.dirty = true;
+          this.spawnParticles(target.x, target.y, 4);
+        }
+      }
+      return true;
+    } else {
+      attacker.cooldown[key] = this.turn + COOLDOWN_TURNS;
+      if (target.owner) {
+        s_recordBattle(attacker, this.states.get(target.owner), false);
+      }
+      return false;
+    }
+  }
+  processRout() {
+    // 计算平均兵力,判断弱国
+    const aliveStates = Array.from(this.states.values()).filter(s => s.alive);
+    const avgTroops = aliveStates.reduce((sum, s) => sum + s.troops, 0) / aliveStates.length;
+    for (const s of aliveStates) {
+      // 弱国(兵力<平均 60%)溃败阈值更低、概率更高
+      const isWeak = s.troops < avgTroops * 0.6;
+      const threshold = isWeak ? 1 : ROUT_THRESHOLD;
+      const probMult = isWeak ? 2.0 : 1.0;
+      if (s.lostRecently >= threshold) {
+        const owned = this.grid.cellsOf(s.id);
+        for (const c of owned) {
+          if (c.capital) continue;
+          const nbrs = this.grid.neighbors(c.x, c.y);
+          const isFront = nbrs.some(n => n.owner !== null && n.owner !== s.id);
+          if (!isFront && Math.random() < ROUT_PROB * 0.25 * probMult) {
+            const escape = nbrs.find(n => n.owner === null && n.terrain !== Terrain.LAKE);  // 山地可被占领
+            if (escape) {
+              escape.owner = s.id;
+              escape.garrison = Math.floor(c.garrison * 0.5);
+              c.garrison = Math.floor(c.garrison * 0.5);
+              escape.dirty = true; c.dirty = true;
+            }
+          }
+        }
+        s.lostRecently = 0;
+        // 不再上报溃败战报(精简)
+      }
+      if (s.lostRecently > 0) s.lostRecently = Math.max(0, s.lostRecently - 0.15);
+    }
+  }
+  // 防御求援:被攻击方通知盟友,盟友优先攻攻击者(分担压力)
+  // 在领土被占时调用
+  requestDefense(victim, attacker) {
+    if (victim.allies.size === 0) return;
+    for (const allyId of victim.allies.keys()) {
+      const ally = this.states.get(allyId);
+      if (!ally || !ally.alive) continue;
+      // 盟友必须与攻击者接壤才能支援
+      const cells = this.grid.cellsOf(ally.id);
+      let borders = false;
+      for (const c of cells) {
+        for (const n of this.grid.neighbors(c.x, c.y)) {
+          if (n.owner === attacker.id) { borders = true; break; }
+        }
+        if (borders) break;
+      }
+      if (!borders) continue;
+      // 仇恨加成(盟友对攻击者)
+      ally.hatred[attacker.id] = (ally.hatred[attacker.id] || 0) + 8;
+      // 宣战(若尚未)
+      if (!ally.warTargets.has(attacker.id)) {
+        // persona.diplo 越高越愿意支援
+        const diplo = ally.persona.diplo || 50;
+        if (Math.random() < 0.5 + diplo / 200) {
+          ally.warTargets.add(attacker.id);
+          // 强制改主攻目标为攻击者(下一轮 pickPrimaryTarget 会重评)
+          if (Math.random() < 0.5) {
+            ally.primaryTarget = attacker.id;
+            // 重新选锚点指向攻击者
+            let best = null, bestDist = Infinity;
+            const [tx, ty] = attacker.capital;
+            for (const c of ally.frontLine) {
+              const isAdj = this.grid.neighbors(c.x, c.y).some(n => n.owner === attacker.id);
+              if (!isAdj) continue;
+              const d = Math.abs(c.x - tx) + Math.abs(c.y - ty);
+              if (d < bestDist) { bestDist = d; best = c; }
+            }
+            if (best) {
+              const oldAnchor = ally.attackAnchor;
+              ally.attackAnchor = { x: best.x, y: best.y };
+              ally.anchorReadyTurn = this.turn + 4;
+              // 派遣行军:从旧锚点(或首都)向新锚点支援
+              const fromX = oldAnchor ? oldAnchor.x : ally.capital[0];
+              const fromY = oldAnchor ? oldAnchor.y : ally.capital[1];
+              this.dispatchMarching(ally, fromX, fromY, best.x, best.y, Math.floor(ally.troops * 0.15));
+            }
+          }
+          this.report(this.turn, 'diplomacy', `${ally.name}应${victim.name}之求,出兵讨${attacker.name}`, ally);
+        }
+      }
+    }
+  }
+  processRecovery() {
+    // 后期消耗战加速:存活国家越少,每回合消耗越大(打破持久拉锯)
+    const aliveCount = Array.from(this.states.values()).filter(s => s.alive).length;
+    // 后期疲劳系数加强:≤4 国 1.4,≤3 国 1.8,≤2 国 2.5(强制决战)
+    const lateGameFatigue = aliveCount <= 2 ? 2.5 : (aliveCount <= 3 ? 1.8 : (aliveCount <= 4 ? 1.4 : 1.0));
+    // 后期强制打破僵局:≤4 国解除所有中立,≤3 国解除所有休战,≤2 国强制进攻态势
+    if (aliveCount <= 4) {
+      for (const s of this.states.values()) {
+        if (!s.alive) continue;
+        s.neutralWith.clear();  // 中立全部失效
+      }
+    }
+    if (aliveCount <= 3) {
+      for (const s of this.states.values()) {
+        if (!s.alive) continue;
+        s.truceUntil = 0;  // 休战全部解除
+        s.stance = 'attack';  // 强制进攻
+      }
+    }
+    for (const s of this.states.values()) {
+      if (!s.alive) continue;
+      // 兵力生成基于国力:国力越强,每回合产兵越多
+      // 公式:基础25 + 领土产出(cellCount×5) + 国力加成(power×0.005)
+      const powerBonus = s.power() * 0.005;
+      const recover = ((s.cellCount * 5) + 25 + powerBonus) / lateGameFatigue;
+      const foodConsume = s.cellCount * 0.6 * lateGameFatigue;
+      const minTroops = s.initTroops * MIN_TROOPS_RATIO;
+      // ≤3 国时每回合额外消耗兵力(加速决战)
+      const attrition = aliveCount <= 3 ? s.troops * 0.005 : 0;
+      s.troops = Math.max(minTroops, s.troops - attrition);
+      // 兵力上限也随国力增长(强国可养更多兵)
+      const troopCap = s.initTroops * 1.6 + s.power() * 0.02;
+      if (s.food > foodConsume) {
+        s.food -= foodConsume;
+        if (this.turn >= s.truceUntil) {
+          s.troops = Math.min(troopCap, s.troops + recover);
+        } else {
+          s.troops = Math.min(troopCap, s.troops + recover * 0.6);
+        }
+      } else {
+        // 粮草断绝:饥荒减员 -5%/回合(但保留兵底避免秒灭)
+        s.food = 0;
+        const famineLoss = s.troops * 0.05 + recover * 0.3 * lateGameFatigue;
+        s.troops = Math.max(minTroops, s.troops - famineLoss);
+      }
+      if (s.troops < minTroops) s.troops = minTroops;
+      // === 动态兵力调配 ===
+      // 每回合将部分兵力分配到主攻锚点附近(集中兵力),其他区域抽调(防御薄弱)
+      this.reallocateTroops(s);
+    }
+  }
+  // 动态兵力调配:前线主攻区集中兵力,非主攻区抽调
+  reallocateTroops(s) {
+    if (!s.attackAnchor) return;
+    const ready = this.turn >= (s.anchorReadyTurn || 0);
+    for (const c of s.frontLine) {
+      const d = Math.abs(c.x - s.attackAnchor.x) + Math.abs(c.y - s.attackAnchor.y);
+      if (d <= 4) {
+        // 主攻区:驻军加成(稳定前仅 50% 效能)
+        const boost = s.troops * 0.015 * (ready ? 1.0 : 0.5);
+        c.garrison = Math.min(c.garrison + boost, s.troops * 0.25);
+      } else {
+        // 非主攻前线:抽调 8% 回归中央
+        const pullback = c.garrison * 0.08;
+        c.garrison = Math.max(0, c.garrison - pullback);
+        s.troops += pullback * 0.5;
+      }
+      c.dirty = true;
+    }
+  }
+  // 派遣行军:从某国抽调兵力,经 N 回合抵达目的地
+  // 用于:切换主攻锚点时,从首都向新锚点调兵;盟友响应求援时远程支援
+  dispatchMarching(s, fromX, fromY, toX, toY, troops) {
+    if (!s || !s.alive || troops <= 5) return;
+    troops = Math.min(troops, s.troops * 0.25);  // 单次最多抽调 25%
+    if (troops <= 5) return;
+    s.troops -= troops;
+    const dist = Math.abs(fromX - toX) + Math.abs(fromY - toY);
+    const duration = Math.max(2, Math.ceil(dist / 3));  // 每 3 格 1 回合,最少 2 回合
+    s.marching.push({
+      fromX, fromY, toX, toY,
+      startTurn: this.turn,
+      arriveTurn: this.turn + duration,
+      troops
+    });
+  }
+  // 行军到达处理:回合开始时检查在途兵力是否抵达
+  processMarching() {
+    for (const s of this.states.values()) {
+      if (!s.alive) continue;
+      if (s.marching.length === 0) continue;
+      const arrived = [];
+      const remaining = [];
+      for (const m of s.marching) {
+        if (this.turn >= m.arriveTurn) arrived.push(m);
+        else remaining.push(m);
+      }
+      s.marching = remaining;
+      // 抵达的兵力加入目标格驻军(若已失守则回归中央)
+      for (const m of arrived) {
+        const cell = this.grid.get(m.toX, m.toY);
+        if (cell && cell.owner === s.id) {
+          cell.garrison += m.troops;
+          cell.dirty = true;
+        } else {
+          // 目标格已失守:兵力 50% 回归中央,50% 散失(行军途中损失)
+          s.troops += m.troops * 0.5;
+        }
+      }
+    }
+  }
+  // 灭国:首都陷落触发(改为:分裂为1-3个小国 + 标记可复国)
+  eliminate(victim, attacker) {
+    // 1. 拿走首都格(归征服者)
+    const capCell = this.grid.get(victim.capital[0], victim.capital[1]);
+    if (capCell) {
+      capCell.owner = attacker.id;
+      capCell.capital = false;
+      capCell.city = true;
+      capCell.fortress = true;
+      capCell.contestingOwner = null;
+      capCell.contestTurns = 0;
+      capCell.dirty = true;
+      attacker.cellCount++;
+      attacker.cityCount++;
+    }
+    // 记录"已亡国但可复国"状态,供复国逻辑使用
+    victim.fallen = true;
+    victim.fallenBy = attacker.id;
+    victim.fallenTurn = this.turn;
+    victim.alive = false;  // 主国家实体不再行动
+    victim.cellCount = 0;
+    // 收编残部 30% 给征服者
+    attacker.troops += Math.floor(victim.troops * 0.3);
+    // 2. 剩余领土分裂为 1-3 个小国(后/伪/南)
+    //    分裂小国(isRump)被灭后不再分裂,直接归征服者(最多迭代一次)
+    const remaining = this.grid.cellsOf(victim.id).filter(c => !c.capital);
+    if (!victim.isRump && remaining.length >= 3) {
+      // 按地理位置聚为最多 3 簇
+      const clusters = this.clusterCells(remaining, 3);
+      // 5 种命名前缀,随机洗牌取前 3 个(避免每次都叫后/伪/南)
+      const allPrefixes = ['后', '伪', '南', '北', '残'];
+      const prefixes = allPrefixes.sort(() => Math.random() - 0.5).slice(0, 3);
+      let created = 0;
+      for (let i = 0; i < clusters.length && created < 3; i++) {
+        const cluster = clusters[i];
+        if (cluster.length < 2) continue;  // 太小不分裂
+        // 找簇中最靠后方(远离 attacker 首都)的格子作为新都
+        const [ax, ay] = attacker.capital;
+        cluster.sort((a, b) => {
+          const da = Math.abs(a.x - ax) + Math.abs(a.y - ay);
+          const db = Math.abs(b.x - ax) + Math.abs(b.y - ay);
+          return db - da;  // 距离 attacker 远的优先
+        });
+        const newCap = cluster[0];
+        const newId = `${victim.id}_split${i}_${this.turn}`;
+        const newName = prefixes[i] + victim.name;
+        // 创建分裂小国:继承原国颜色/persona,兵力的 1/(剩余簇数)
+        const splitState = new State({
+          id: newId, name: newName,
+          color: victim.color, bright: victim.bright,
+          capital: [newCap.x, newCap.y], cells: [[newCap.x, newCap.y]],
+          troops: Math.floor(victim.troops * 0.2),
+          food: Math.floor(victim.food * 0.25),
+          persona: { ...victim.persona }
+        });
+        splitState.originNation = victim.id;  // 记录起源国(用于复国)
+        splitState.isRump = true;  // 标记为残余小国
+        splitState.morale = Math.max(40, victim.morale - 20);
+        // 继承部分将领
+        if (victim.generals.length > 0) {
+          splitState.generals = [victim.generals[i % victim.generals.length]];
+        }
+        this.states.set(newId, splitState);
+        // 将簇中所有格归属新国
+        for (const c of cluster) {
+          c.owner = newId;
+          c.contestingOwner = null;
+          c.contestTurns = 0;
+          c.dirty = true;
+          splitState.cellCount++;
+        }
+        // 新都设置
+        newCap.capital = true;
+        newCap.city = false;
+        newCap.fortress = true;
+        newCap.garrison = Math.floor(splitState.troops * 0.3);
+        splitState.troops -= newCap.garrison;
+        this.report(this.turn, 'diplomacy', `${victim.name}分裂,${newName}于 (${newCap.x},${newCap.y}) 立国`, splitState);
+        created++;
+      }
+      // 清理剩余归属为 attacker(零星孤岛)
+      for (const c of remaining) {
+        if (c.owner === victim.id) {
+          c.owner = attacker.id;
+          c.contestingOwner = null;
+          c.dirty = true;
+          attacker.cellCount++;
+        }
+      }
+    } else {
+      // 剩余领土太少 或 分裂小国被灭(不再二次分裂),直接归征服者
+      for (const c of remaining) {
+        c.owner = attacker.id;
+        c.contestingOwner = null;
+        c.contestTurns = 0;
+        c.dirty = true;
+        attacker.cellCount++;
+      }
+      if (victim.isRump) {
+        this.report(this.turn, 'event', `${victim.name}残部覆灭,土地尽归${attacker.name}`, attacker);
+      }
+    }
+    // 3. 清理亡国的外交关系(盟约/中立/战争目标)
+    for (const s of this.states.values()) {
+      s.neutralWith.delete(victim.id);
+      s.warTargets.delete(victim.id);
+      if (s.allies.has(victim.id)) s.allies.delete(victim.id);
+    }
+    victim.neutralWith.clear();
+    victim.warTargets.clear();
+    victim.allies.clear();
+    // 安全清理:确保没有遗漏的格子指向已亡国(避免渲染时无效 owner)
+    for (let y = 0; y < GRID_H; y++) {
+      for (let x = 0; x < GRID_W; x++) {
+        const c = this.grid.get(x, y);
+        if (c.owner === victim.id) {
+          c.owner = attacker.id;
+          c.contestingOwner = null;
+          c.contestTurns = 0;
+          c.dirty = true;
+          attacker.cellCount++;
+        }
+      }
+    }
+  }
+  // 聚类:将格子按地理位置分为 k 簇(简化 k-means)
+  clusterCells(cells, k) {
+    if (cells.length <= k) return [cells];
+    // 随机选 k 个中心
+    const centers = [];
+    for (let i = 0; i < k; i++) {
+      centers.push({ x: cells[Math.floor(Math.random() * cells.length)].x, y: cells[Math.floor(Math.random() * cells.length)].y });
+    }
+    // 迭代 3 次就够了
+    for (let iter = 0; iter < 3; iter++) {
+      const clusters = Array.from({length: k}, () => []);
+      for (const c of cells) {
+        let bestIdx = 0, bestD = Infinity;
+        for (let i = 0; i < k; i++) {
+          const d = Math.abs(c.x - centers[i].x) + Math.abs(c.y - centers[i].y);
+          if (d < bestD) { bestD = d; bestIdx = i; }
+        }
+        clusters[bestIdx].push(c);
+      }
+      // 更新中心
+      for (let i = 0; i < k; i++) {
+        if (clusters[i].length === 0) continue;
+        const avgX = clusters[i].reduce((s, c) => s + c.x, 0) / clusters[i].length;
+        const avgY = clusters[i].reduce((s, c) => s + c.y, 0) / clusters[i].length;
+        centers[i] = { x: avgX, y: avgY };
+      }
+    }
+    // 最终聚类
+    const finalClusters = Array.from({length: k}, () => []);
+    for (const c of cells) {
+      let bestIdx = 0, bestD = Infinity;
+      for (let i = 0; i < k; i++) {
+        const d = Math.abs(c.x - centers[i].x) + Math.abs(c.y - centers[i].y);
+        if (d < bestD) { bestD = d; bestIdx = i; }
+      }
+      finalClusters[bestIdx].push(c);
+    }
+    return finalClusters.filter(c => c.length > 0);
+  }
+  // 智能迁都:综合评估首都威胁度 + 候选评分(距敌远 + 腹地深 + 可扩张)
+  checkCapitalRelocation() {
+    for (const s of this.states.values()) {
+      if (!s.alive || s.fallen) continue;
+      // 防止反复迁都:上次迁都后冷却 30 回合
+      if (s.lastRelocateTurn && this.turn - s.lastRelocateTurn < 30) continue;
+      const [cx, cy] = s.capital;
+      const cap = this.grid.get(cx, cy);
+      if (!cap || !cap.capital) continue;
+      // === 威胁评估 ===
+      // 1. 首都距前线距离(_frontDist 已在 tick 中计算)
+      const capDist = cap._frontDist ?? 99;
+      // 2. 邻接敌国数
+      const nbrs = this.grid.neighbors(cx, cy);
+      let hostileCount = 0;
+      let hostilePower = 0;
+      for (const n of nbrs) {
+        if (n.owner && n.owner !== s.id && !s.allies.has(n.owner)) {
+          const ns = this.states.get(n.owner);
+          if (ns && ns.alive) {
+            hostileCount++;
+            hostilePower += ns.power();
+          }
+        }
+      }
+      // 3. 兵力比(己方 vs 邻接敌国总和)
+      const myPower = s.power();
+      const powerRatio = hostilePower > 0 ? myPower / hostilePower : 99;
+      // 触发条件:首都距前线 ≤1 + (邻接 ≥2 敌国 或 兵力比 < 0.6)
+      const underThreat = capDist <= 1 && (hostileCount >= 2 || powerRatio < 0.6);
+      if (!underThreat) continue;
+      // === 候选评分 ===
+      const cells = this.grid.cellsOf(s.id).filter(c =>
+        !c.capital && c.terrain !== Terrain.LAKE
+      );
+      if (cells.length === 0) continue;
+      let best = null, bestScore = -Infinity;
+      for (const c of cells) {
+        // 1. 距当前前线距离(越大越安全)
+        const frontDist = c._frontDist ?? 0;
+        if (frontDist < 2) continue;  // 必须在腹地内
+        // 2. 距最近敌国边境距离(用近似:扫描周围 8 格半径内的敌国)
+        // 用 BFS 半径 6 检测最近敌国格
+        let minEnemyDist = 99;
+        for (let dy = -6; dy <= 6 && minEnemyDist > 4; dy++) {
+          for (let dx = -6; dx <= 6; dx++) {
+            if (Math.abs(dx) + Math.abs(dy) > 6) continue;
+            const n = this.grid.get(c.x + dx, c.y + dy);
+            if (n && n.owner && n.owner !== s.id && !s.allies.has(n.owner)) {
+              const d = Math.abs(dx) + Math.abs(dy) - 1;
+              if (d < minEnemyDist) minEnemyDist = d;
+            }
+          }
+        }
+        if (minEnemyDist < 4) continue;  // 太近敌国,排除
+        // 3. 周围平原格数(可扩张腹地)
+        const cnbrs = this.grid.neighbors(c.x, c.y);
+        const plainNbrs = cnbrs.filter(n => n.terrain === Terrain.PLAIN).length;
+        // 4. 距当前首都距离(避免过近,但也不必最远)
+        const capD = Math.abs(c.x - cx) + Math.abs(c.y - cy);
+        // 综合评分:距敌远(权重最大) + 距前线远 + 腹地广 + 距旧都适中
+        const score = minEnemyDist * 3 + frontDist * 2 + plainNbrs * 1.5 + Math.min(capD, 12) * 0.5;
+        if (score > bestScore) { bestScore = score; best = c; }
+      }
+      if (!best) continue;
+      // === 执行迁都 ===
+      cap.capital = false;
+      cap.city = true;
+      cap.fortress = true;
+      best.capital = true;
+      best.city = false;
+      best.fortress = true;
+      // 迁都带走部分驻军(旧都留 1/3)
+      const moveGarrison = Math.floor(cap.garrison * 0.66);
+      cap.garrison -= moveGarrison;
+      best.garrison = Math.floor(s.troops * 0.25) + moveGarrison;
+      s.capital = [best.x, best.y];
+      s.morale = Math.max(0, s.morale - 8);  // 迁都失民心(略减)
+      if (s.food >= 150) s.food -= 150;  // 迁都消耗粮草
+      s.lastRelocateTurn = this.turn;  // 记录迁都回合(用于冷却)
+      cap.dirty = true;
+      best.dirty = true;
+      this.report(this.turn, 'event', `${s.name}国都告急,迁都至 (${best.x},${best.y})`, s);
+    }
+  }
+  // 复国检查:分裂小国拿回原国都时,复国恢复国号,整合所有同源小国
+  checkRestoration() {
+    for (const s of Array.from(this.states.values())) {
+      if (!s.alive || !s.isRump || !s.originNation) continue;
+      const origin = this.states.get(s.originNation);
+      if (!origin || !origin.fallen) continue;
+      // 检查原国都格是否被本分裂国占领
+      const capCell = this.grid.get(origin.capital[0], origin.capital[1]);
+      if (!capCell || capCell.owner !== s.id) continue;
+      // 复国:恢复原国号
+      origin.fallen = false;
+      origin.alive = true;
+      origin.fallenBy = null;
+      origin.cellCount = 0;
+      // 整合所有同源分裂国的领土回原国(避免多个国都并存)
+      const toRemove = [];
+      for (const r of this.states.values()) {
+        if (!r.isRump || r.originNation !== origin.id) continue;
+        const rCells = this.grid.cellsOf(r.id);
+        for (const c of rCells) {
+          c.owner = origin.id;
+          c.dirty = true;
+          origin.cellCount++;
+        }
+        origin.troops += r.troops;
+        origin.food += r.food;
+        toRemove.push(r);
+      }
+      // 恢复原国都(可能被其他分裂国占领,现已归原国)
+      capCell.owner = origin.id;
+      capCell.capital = true;
+      capCell.city = false;
+      capCell.fortress = true;
+      capCell.dirty = true;
+      // 清除其他格子的 capital 标记(分裂国旧都降级为城)
+      for (const r of toRemove) {
+        const rCap = this.grid.get(r.capital[0], r.capital[1]);
+        if (rCap && rCap.capital && rCap.owner === origin.id) {
+          rCap.capital = false;
+          rCap.city = true;
+          rCap.dirty = true;
+        }
+      }
+      origin.morale = Math.min(100, origin.morale + 30);
+      // 移除所有同源分裂国
+      for (const r of toRemove) {
+        r.alive = false;
+        r.cellCount = 0;
+        this.states.delete(r.id);
+        for (const o of this.states.values()) {
+          o.neutralWith.delete(r.id);
+          o.warTargets.delete(r.id);
+          if (o.allies.has(r.id)) o.allies.delete(r.id);
+        }
+      }
+      this.report(this.turn, 'capital', `${origin.name}复国!收复旧都故土,恢复宗庙社稷`, origin);
+      // 安全清理:确保没有遗漏的格子指向已删除的分裂国
+      const removedIds = new Set(toRemove.map(r => r.id));
+      for (let y = 0; y < GRID_H; y++) {
+        for (let x = 0; x < GRID_W; x++) {
+          const c = this.grid.get(x, y);
+          if (removedIds.has(c.owner)) {
+            c.owner = origin.id;
+            c.contestingOwner = null;
+            c.contestTurns = 0;
+            c.dirty = true;
+            origin.cellCount++;
+          }
+        }
+      }
+      break;  // 一次只处理一个复国,避免循环中修改 states
+    }
+  }
+  spawnParticles(x, y, count) {
+    for (let i = 0; i < count; i++) {
+      const p = {
+        x: x * CELL_SIZE + CELL_SIZE / 2 + (Math.random() - 0.5) * CELL_SIZE,
+        y: y * CELL_SIZE + CELL_SIZE / 2 + (Math.random() - 0.5) * CELL_SIZE,
+        vx: (Math.random() - 0.5) * 2,
+        vy: (Math.random() - 0.5) * 2,
+        life: 1.0,
+        color: Math.random() < 0.5 ? '#e8c887' : '#c8323a',
+      };
+      if (this.particles.length < this.maxParticles) {
+        this.particles.push(p);
+      } else {
+        // 环形缓冲:覆盖最旧的,避免 shift() 的 O(n)
+        this.particles[this.particleIdx] = p;
+        this.particleIdx = (this.particleIdx + 1) % this.maxParticles;
+      }
+    }
+  }
+  updateParticles() {
+    // 原地压缩:避免 splice() 的 O(n)
+    let write = 0;
+    for (let i = 0; i < this.particles.length; i++) {
+      const p = this.particles[i];
+      p.x += p.vx; p.y += p.vy;
+      p.life -= 0.05;
+      if (p.life > 0) {
+        this.particles[write++] = p;
+      }
+    }
+    this.particles.length = write;
+    if (this.particles.length < this.maxParticles) this.particleIdx = this.particles.length;
+  }
+}
+
+function s_recordBattle(attacker, defender, win) {
+  attacker.recentBattles.unshift({ vs: defender.name, win, t: Date.now() });
+  if (attacker.recentBattles.length > 8) attacker.recentBattles.pop();
+  defender.recentBattles.unshift({ vs: attacker.name, win: !win, t: Date.now() });
+  if (defender.recentBattles.length > 8) defender.recentBattles.pop();
+}
+
+// ==================== DiplomacyManager ====================
+class DiplomacyManager {
+  constructor(grid, states, reportCb) {
+    this.grid = grid;
+    this.states = states;
+    this.report = reportCb;
+    this.lastEval = 0;
+  }
+  tick(turn) {
+    if (turn - this.lastEval < DIPLOMACY_INTERVAL) return;
+    this.lastEval = turn;
+    this.expireAlliances(turn);
+    this.evaluateAlliances(turn);
+    this.coordinateAlliedWars(turn);  // 盟国协同:强国号召盟国围攻同一目标
+    this.evaluateNeutrality(turn);
+    this.decayHatred();
+  }
+  // 盟国协同围攻:强国号召盟国对同一目标宣战
+  // 触发条件:强国已有 warTarget,且盟友与该目标接壤
+  coordinateAlliedWars(turn) {
+    const alive = Array.from(this.states.values()).filter(s => s.alive);
+    for (const s of alive) {
+      if (s.allies.size === 0) continue;
+      // s 已宣战的目标
+      for (const targetId of Array.from(s.warTargets)) {
+        const target = this.states.get(targetId);
+        if (!target || !target.alive) continue;
+        // 邀请盟友加入围攻
+        for (const allyId of s.allies.keys()) {
+          const ally = this.states.get(allyId);
+          if (!ally || !ally.alive) continue;
+          if (ally.warTargets.has(targetId)) continue;  // 已宣战
+          // 必须与目标接壤(否则无法参与)
+          const borders = this.bordersWith(ally.id, targetId);
+          if (!borders) continue;
+          // 60% 概率响应号召(受 persona.diplo 影响)
+          const diplo = ally.persona.diplo || 50;
+          if (Math.random() < 0.4 + diplo / 200) {
+            ally.warTargets.add(targetId);
+            ally.hatred[targetId] = (ally.hatred[targetId] || 0) + 15;
+            this.report(turn, 'diplomacy', `${ally.name}响应${s.name}号召,共讨${target.name}`, ally);
+          }
+        }
+      }
+    }
+  }
+  // 检查两国是否接壤
+  bordersWith(idA, idB) {
+    const cellsA = this.grid.cellsOf(idA);
+    for (const c of cellsA) {
+      for (const n of this.grid.neighbors(c.x, c.y)) {
+        if (n.owner === idB) return true;
+      }
+    }
+    return false;
+  }
+  // 盟约过期/撕毁检查
+  expireAlliances(turn) {
+    for (const s of this.states.values()) {
+      if (!s.alive) continue;
+      // 遍历所有盟约,清除已过期
+      for (const [allyId, exp] of Array.from(s.allies.entries())) {
+        if (turn >= exp) {
+          s.allies.delete(allyId);
+          const ex = this.states.get(allyId);
+          if (ex) ex.allies.delete(s.id);
+          // 同步主 ally 字段
+          if (s.ally === allyId) {
+            s.ally = s.allies.size > 0 ? s.allies.keys().next().value : null;
+            s.allyUntil = s.allies.size > 0 ? s.allies.get(s.ally) : 0;
+          }
+          this.report(turn, 'diplomacy', `${s.name}与${ex?.name || '?'}盟约期满,各奔东西`, s);
+        }
+      }
+    }
+  }
+  // 多盟约:每国最多 2 个盟友,可单方面撕毁
+  evaluateAlliances(turn) {
+    const alive = Array.from(this.states.values()).filter(s => s.alive);
+    if (alive.length < 3) return;
+    const ranking = alive.sort((a, b) => b.power() - a.power());
+    const strongest = ranking[0];
+    const avgPower = alive.reduce((sum, s) => sum + s.power(), 0) / alive.length;
+    const isHegemon = strongest.power() > avgPower * 1.4;
+    // 合纵反制:当一国国力 > 其他六国总和的 40% 时,弱国结盟成功率+30%,盟约上限+50
+    const othersPowerSum = alive.filter(s => s !== strongest).reduce((sum, s) => sum + s.power(), 0);
+    const counterCoalition = strongest.power() > othersPowerSum * 0.4;
+    // 1. 撕毁检查
+    for (const s of alive) {
+      if (s.allies.size === 0) continue;
+      if (turn < s.allyCooldown) continue;
+      for (const allyId of Array.from(s.allies.keys())) {
+        const allyObj = this.states.get(allyId);
+        if (!allyObj || !allyObj.alive) {
+          s.allies.delete(allyId); continue;
+        }
+        // 仇恨盟友超过阈值 -> 撕毁
+        if ((s.hatred[allyId] || 0) > 30) {
+          s.breakAlliance(turn, allyId, '仇恨累积');
+          if (allyObj) allyObj.breakAlliance(turn, s.id, '被撕毁');
+          // 撕毁盟约:双方仇恨 +40
+          s.hatred[allyId] = (s.hatred[allyId] || 0) + 40;
+          allyObj.hatred[s.id] = (allyObj.hatred[s.id] || 0) + 40;
+          this.report(turn, 'diplomacy', `${s.name}愤而撕毁与${allyObj.name}盟约,旧怨难消`, s);
+          continue;
+        }
+        // 盟友国力远超自己(>1.8倍) -> 担忧被吞,撕毁
+        if (allyObj.power() > s.power() * 1.8 && Math.random() < 0.4) {
+          s.breakAlliance(turn, allyId, '畏强');
+          if (allyObj) allyObj.breakAlliance(turn, s.id, '被撕毁');
+          // 撕毁盟约:双方仇恨 +40
+          s.hatred[allyId] = (s.hatred[allyId] || 0) + 40;
+          allyObj.hatred[s.id] = (allyObj.hatred[s.id] || 0) + 40;
+          this.report(turn, 'diplomacy', `${s.name}忌惮${allyObj.name}势大,单方面毁约`, s);
+          continue;
+        }
+      }
+    }
+    // 2. 缔结新盟约(每国最多 2 个)
+    const target = isHegemon ? strongest : ranking[0];
+    const candidates = isHegemon ? ranking.slice(1) : ranking.slice(-3);
+    // 合纵:弱国与弱国结对(最多 2 个盟友)
+    for (const w of candidates) {
+      if (w.allies.size >= 2 || turn < w.allyCooldown) continue;
+      if (w.id === target.id) continue;
+      for (const w2 of candidates) {
+        if (w2.id === w.id || w2.allies.size >= 2 || turn < w2.allyCooldown) continue;
+        if (w2.id === target.id) continue;
+        if (w.allies.has(w2.id)) continue;
+        // 合纵反制:霸权时成功率 +30%(原 50% 提升至 65%),盟约上限 +50 回合
+        if (counterCoalition && Math.random() < 0.3) continue;  // 跳过概率更低
+        // 缔约:弱国合纵需长期盟约,由国家自主决定(250-300 回合)
+        // 实力越接近,共同利益越牢固,盟约越长
+        const powerGap = Math.abs(w.power() - w2.power()) / Math.max(1, w.power() + w2.power());
+        let baseDur = 250 + Math.floor((1 - powerGap) * 30);  // 250-280 由实力差距决定
+        if (counterCoalition) baseDur += 50;  // 合纵反制:盟约 +50
+        const duration = baseDur + Math.floor(Math.random() * 20);  // 250-350 浮动
+        w.allies.set(w2.id, turn + duration);
+        w2.allies.set(w.id, turn + duration);
+        if (w.ally === null) { w.ally = w2.id; w.allyUntil = turn + duration; }
+        if (w2.ally === null) { w2.ally = w.id; w2.allyUntil = turn + duration; }
+        w.warTargets.add(target.id);
+        w2.warTargets.add(target.id);
+        if (w.hatred[w2.id]) w.hatred[w2.id] = 0;
+        if (w2.hatred[w.id]) w2.hatred[w.id] = 0;
+        w.hatred[target.id] = (w.hatred[target.id] || 0) + 20;
+        w2.hatred[target.id] = (w2.hatred[target.id] || 0) + 20;
+        this.report(turn, 'diplomacy', `${w.name}与${w2.name}歃血为盟,合纵抗${target.name}(${duration}回合)`, w);
+        if (w.allies.size >= 2) break;
+      }
+    }
+    // 连横:强国与中等国结对(强国也可有 2 个盟友)
+    if (strongest.allies.size < 2 && turn >= strongest.allyCooldown) {
+      const middles = ranking.slice(1, -3);
+      for (const m of middles) {
+        if (m.allies.size >= 2 || turn < m.allyCooldown) continue;
+        if (strongest.allies.has(m.id)) continue;
+        if (Math.random() < 0.5) {
+          // 连横:强国短期利用盟约,150-220 回合(强国主动选择,较短)
+          const duration = 150 + Math.floor(Math.random() * 70);  // 150-220 回合
+          strongest.allies.set(m.id, turn + duration);
+          m.allies.set(strongest.id, turn + duration);
+          if (strongest.ally === null) { strongest.ally = m.id; strongest.allyUntil = turn + duration; }
+          if (m.ally === null) { m.ally = strongest.id; m.allyUntil = turn + duration; }
+          const victim = ranking[ranking.length - 1];
+          if (victim && victim.alive) {
+            m.warTargets.add(victim.id);
+            strongest.warTargets.add(victim.id);
+          }
+          if (strongest.hatred[m.id]) strongest.hatred[m.id] = 0;
+          if (m.hatred[strongest.id]) m.hatred[strongest.id] = 0;
+          this.report(turn, 'diplomacy', `${strongest.name}与${m.name}连横之约,共图天下(${duration}回合)`, strongest);
+          if (strongest.allies.size >= 2) break;
+        }
+      }
+    }
+    // 3. 清理:盟友不互攻,warTargets 中移除盟友
+    for (const s of alive) {
+      for (const allyId of s.allies.keys()) {
+        if (s.warTargets.has(allyId)) s.warTargets.delete(allyId);
+        if (s.hatred[allyId]) s.hatred[allyId] = 0;
+      }
+    }
+  }
+  decayHatred() {
+    for (const s of this.states.values()) {
+      if (!s.alive) continue;
+      for (const k of Object.keys(s.hatred)) {
+        s.hatred[k] *= 0.92;
+        if (s.hatred[k] < 1) delete s.hatred[k];
+      }
+    }
+  }
+  // 中立关系评估:既不结盟也不征战
+  // 条件:接壤 + 双方仇恨低 + 无战争目标 + 实力差距适中
+  // 一旦条件不满足(仇恨累积/实力失衡/被设为战争目标),中立自动解除
+  evaluateNeutrality(turn) {
+    const alive = Array.from(this.states.values()).filter(s => s.alive);
+    // 收集每对国家是否接壤
+    const borders = new Map();
+    for (const s of alive) {
+      for (const c of this.grid.cellsOf(s.id)) {
+        for (const n of this.grid.neighbors(c.x, c.y)) {
+          if (n.owner && n.owner !== s.id) {
+            const key = [s.id, n.owner].sort().join('|');
+            borders.set(key, true);
+          }
+        }
+      }
+    }
+    for (const s of alive) {
+      for (const o of alive) {
+        if (o.id === s.id) continue;
+        const key = [s.id, o.id].sort().join('|');
+        // 盟友关系:不中立
+        if (s.allies.has(o.id)) { s.neutralWith.delete(o.id); continue; }
+        // 不接壤:无中立关系(远国天然不交战,无需中立标记)
+        if (!borders.has(key)) { s.neutralWith.delete(o.id); continue; }
+        const hate = s.hatred[o.id] || 0;
+        const reverseHate = o.hatred[s.id] || 0;
+        const sPower = s.power(), oPower = o.power();
+        const powerGap = Math.abs(sPower - oPower) / Math.max(1, sPower + oPower);
+        // 中立维持条件:
+        //   双方仇恨都低(<8)、互相不是战争目标、实力差距适中(<0.5)
+        //   且双方都没被对方列入 warTargets
+        const lowHate = hate < 8 && reverseHate < 8;
+        const noWarTarget = !s.warTargets.has(o.id) && !o.warTargets.has(s.id);
+        const balancedPower = powerGap < 0.5;
+        if (lowHate && noWarTarget && balancedPower) {
+          // 一定随机性:避免所有接壤国都立即中立
+          if (!s.neutralWith.has(o.id) && Math.random() < 0.4) {
+            s.neutralWith.add(o.id);
+          }
+        } else {
+          // 条件不满足,解除中立
+          s.neutralWith.delete(o.id);
+        }
+      }
+    }
+  }
+}
+
+// ==================== Renderer ====================
+class Renderer {
+  constructor(canvas, grid, states, engine) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.grid = grid;
+    this.states = states;
+    this.engine = engine;
+    // 静态层:地形+国家色+城市/首都标记+边框+联盟线,只在 dirty 时更新
+    this.static = document.createElement('canvas');
+    this.static.width = canvas.width;
+    this.static.height = canvas.height;
+    this.staticCtx = this.static.getContext('2d');
+    this.staticDirty = true;  // 首次全画
+    this.hoverCell = null;
+    this.frame = 0;
+  }
+  markStaticDirty() { this.staticDirty = true; }
+  draw() {
+    this.frame++;
+    // 静态层:检查 dirty 格,增量更新
+    if (this.staticDirty) {
+      this.redrawStaticFull();
+    } else {
+      this.redrawStaticDirty();
+    }
+    // 主 canvas:复制静态层
+    const ctx = this.ctx;
+    ctx.drawImage(this.static, 0, 0);
+    // 动态层:交战闪烁(每帧重画)
+    for (let y = 0; y < GRID_H; y++) {
+      for (let x = 0; x < GRID_W; x++) {
+        const c = this.grid.get(x, y);
+        if (c.contestingOwner) this.drawContesting(ctx, c);
+      }
+    }
+    // 联盟线:动态层实时绘制(灭亡国自动无连线,因 allies 在 eliminate 时已清理)
+    this.drawAllianceLines(ctx);
+    // 行军轨迹:动态层绘制在途兵力流动
+    this.drawMarching(ctx);
+    // 粒子
+    this.drawParticles(ctx);
+    // hover
+    if (this.hoverCell) {
+      const c = this.hoverCell;
+      ctx.strokeStyle = '#e8c887';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(c.x * CELL_SIZE + 1, c.y * CELL_SIZE + 1, CELL_SIZE - 2, CELL_SIZE - 2);
+    }
+  }
+  // 全量重画静态层
+  redrawStaticFull() {
+    const ctx = this.staticCtx;
+    ctx.fillStyle = '#050507';
+    ctx.fillRect(0, 0, this.static.width, this.static.height);
+    for (let y = 0; y < GRID_H; y++)
+      for (let x = 0; x < GRID_W; x++) {
+        const c = this.grid.get(x, y);
+        this.drawCellStatic(ctx, c);
+        c.dirty = false;
+      }
+    this.drawGridLines(ctx);
+    this.drawBorders(ctx);
+    this.staticDirty = false;
+  }
+  // 增量重画 dirty 格及其邻居(邻居像素中的旧边界需清除)
+  redrawStaticDirty() {
+    let hasDirty = false;
+    for (let y = 0; y < GRID_H && !hasDirty; y++) {
+      for (let x = 0; x < GRID_W; x++) {
+        if (this.grid.get(x, y).dirty) { hasDirty = true; break; }
+      }
+    }
+    if (!hasDirty) return;
+    const ctx = this.staticCtx;
+    // 收集需要重画的格子:dirty 格 + 其四邻(邻居像素中的旧边界需清除)
+    const toRedraw = new Set();
+    for (let y = 0; y < GRID_H; y++) {
+      for (let x = 0; x < GRID_W; x++) {
+        const c = this.grid.get(x, y);
+        if (c.dirty) {
+          toRedraw.add(c);
+          for (const n of this.grid.neighbors(x, y)) toRedraw.add(n);
+        }
+      }
+    }
+    for (const c of toRedraw) {
+      this.drawCellStatic(ctx, c);
+      c.dirty = false;
+    }
+    // 内部网格线统一画一次(避免逐格 strokeRect 叠加导致粗细不一)
+    this.drawGridLines(ctx);
+    // 国家边界
+    this.drawBorders(ctx);
+  }
+  // 统一画内部网格线:每条线只画一次,0.5px 对齐确保清晰
+  drawGridLines(ctx) {
+    ctx.strokeStyle = 'rgba(20,18,12,0.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    // 垂直线
+    for (let x = 0; x <= GRID_W; x++) {
+      const px = x * CELL_SIZE + 0.5;
+      ctx.moveTo(px, 0);
+      ctx.lineTo(px, GRID_H * CELL_SIZE);
+    }
+    // 水平线
+    for (let y = 0; y <= GRID_H; y++) {
+      const py = y * CELL_SIZE + 0.5;
+      ctx.moveTo(0, py);
+      ctx.lineTo(GRID_W * CELL_SIZE, py);
+    }
+    ctx.stroke();
+  }
+  // 静态层绘制:地形+国家色(兵力深浅)+粮仓+城市+首都
+  drawCellStatic(ctx, c) {
+    const px = c.x * CELL_SIZE, py = c.y * CELL_SIZE;
+    ctx.fillStyle = TerrainColor[c.terrain];
+    ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+    if (c.owner) {
+      const s = this.states.get(c.owner);
+      // 只渲染有效国家的颜色;无效 owner(指向已删除国家)显示纯地形
+      // 注意:不在此修改 c.owner,避免渲染副作用导致数据不一致
+      if (s) {
+        // 颜色深浅 = 兵力需求度(距前线越近需求越大→越深;后方需求小→浅)
+        // 国都周边额外加成(适度加深,不主导)
+        const dist = (c._frontDist === undefined) ? 0 : c._frontDist;
+        // 距前线归一化:0(前线)→1, 6+(远后方)→1
+        const frontness = Math.min(1, dist / 6);
+        // 主攻锚点附近(集中进攻方向):额外加深
+        let anchorBoost = 0;
+        if (s.attackAnchor) {
+          const da = Math.abs(c.x - s.attackAnchor.x) + Math.abs(c.y - s.attackAnchor.y);
+          if (da <= 3) anchorBoost = (4 - da) * 0.08;  // 0.08-0.24
+        }
+        // 国都周边加成(适度,3 格内 +0.06~+0.02)
+        const [ccx, ccy] = s.capital;
+        const dc = Math.abs(c.x - ccx) + Math.abs(c.y - ccy);
+        const capitalBoost = dc <= 3 ? (4 - dc) * 0.02 : 0;
+        // 总深色覆盖:前线 0.45 + 锚点加成 + 国都加成(封顶 0.6)
+        // 后方 0(纯原色,浅)
+        const darkness = Math.min(0.6, (1 - frontness) * 0.45 + anchorBoost + capitalBoost);
+        ctx.fillStyle = s.color;
+        ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+        if (darkness > 0.02) {
+          ctx.fillStyle = `rgba(0,0,0,${darkness})`;
+          ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+        }
+      }
+    }
+    // 内部格边界不再逐格绘制(会导致共享边叠加粗细不一)
+    // 改为在 drawGridLines 中统一画一次
+    // 粮仓标记 ▲
+    if (c.granary && !c.capital) {
+      ctx.fillStyle = '#e8c887';
+      ctx.beginPath();
+      ctx.moveTo(px + CELL_SIZE/2, py + 5);
+      ctx.lineTo(px + CELL_SIZE - 5, py + CELL_SIZE - 5);
+      ctx.lineTo(px + 5, py + CELL_SIZE - 5);
+      ctx.closePath();
+      ctx.stroke();
+    }
+    // 别城(要塞框 + ● 标记)
+    if (c.city && !c.capital) {
+      ctx.strokeStyle = '#c9a96a';
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(px + 2, py + 2, CELL_SIZE - 4, CELL_SIZE - 4);
+      ctx.fillStyle = '#e8c887';
+      ctx.beginPath();
+      ctx.arc(px + CELL_SIZE/2, py + CELL_SIZE/2, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // 首都 ★
+    if (c.capital) {
+      ctx.fillStyle = '#ffe890';
+      ctx.font = '14px serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('★', px + CELL_SIZE/2, py + CELL_SIZE/2 + 1);
+    }
+  }
+  // 动态层:交战闪烁 + 剑
+  drawContesting(ctx, c) {
+    const px = c.x * CELL_SIZE, py = c.y * CELL_SIZE;
+    const s = this.states.get(c.contestingOwner);
+    if (!s) return;
+    const flash = 0.35 + Math.sin(this.frame * 0.35) * 0.25;
+    ctx.fillStyle = hexA(s.bright, flash);
+    ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+    this.drawSword(ctx, px + CELL_SIZE/2, py + CELL_SIZE/2);
+  }
+  drawSword(ctx, cx, cy) {
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 5);
+    ctx.lineTo(cx, cy + 4);
+    ctx.moveTo(cx - 3, cy - 2);
+    ctx.lineTo(cx + 3, cy - 2);
+    ctx.moveTo(cx, cy + 4);
+    ctx.lineTo(cx, cy + 6);
+    ctx.stroke();
+  }
+  drawBorders(ctx) {
+    ctx.lineWidth = 2;
+    for (let y = 0; y < GRID_H; y++)
+      for (let x = 0; x < GRID_W; x++) {
+        const c = this.grid.get(x, y);
+        if (!c.owner) continue;
+        const s = this.states.get(c.owner);
+        if (!s) continue;  // owner 无效:不画此格的边界,由有效邻居画
+        const nbrs = [
+          { dx: 0, dy: -1, edge: 'top' },
+          { dx: 0, dy: 1, edge: 'bottom' },
+          { dx: -1, dy: 0, edge: 'left' },
+          { dx: 1, dy: 0, edge: 'right' },
+        ];
+        for (const e of nbrs) {
+          const n = this.grid.get(x + e.dx, y + e.dy);
+          // 邻居无主、或归属不同国家(含无效owner)→ 画边界
+          if (!n || n.owner !== c.owner) {
+            ctx.strokeStyle = 'rgba(20,18,12,0.95)';
+            ctx.beginPath();
+            const px = x * CELL_SIZE, py = y * CELL_SIZE;
+            // 0.5 对齐:让线落在像素中心,避免抗锯齿模糊
+            if (e.edge === 'top') { ctx.moveTo(px, py + 0.5); ctx.lineTo(px + CELL_SIZE, py + 0.5); }
+            if (e.edge === 'bottom') { ctx.moveTo(px, py + CELL_SIZE - 0.5); ctx.lineTo(px + CELL_SIZE, py + CELL_SIZE - 0.5); }
+            if (e.edge === 'left') { ctx.moveTo(px + 0.5, py); ctx.lineTo(px + 0.5, py + CELL_SIZE); }
+            if (e.edge === 'right') { ctx.moveTo(px + CELL_SIZE - 0.5, py); ctx.lineTo(px + CELL_SIZE - 0.5, py + CELL_SIZE); }
+            ctx.stroke();
+          }
+        }
+      }
+  }
+  drawAllianceLines(ctx) {
+    const drawn = new Set();
+    const lines = [];
+    for (const s of this.states.values()) {
+      if (!s.alive || s.allies.size === 0) continue;
+      for (const [allyId, exp] of s.allies) {
+        const key = [s.id, allyId].sort().join('-');
+        if (drawn.has(key)) continue;
+        drawn.add(key);
+        const a = this.states.get(allyId);
+        if (!a || !a.alive) continue;
+        const pair = this.findAllianceEndpoints(s, a);
+        if (!pair) continue;
+        lines.push({ p1: pair.p1, p2: pair.p2, exp, key, adjacent: pair.adjacent });
+      }
+    }
+    // 绘制:全部使用淡色虚线(接壤=短虚线,远距离=弧形虚线)
+    for (const line of lines) {
+      const { p1, p2, exp, key, adjacent } = line;
+      const remaining = exp - this.engine.turn;
+      const urgent = remaining < 5;
+      if (urgent) {
+        // 即将过期:红色虚线闪烁
+        const alpha = 0.4 + Math.sin(this.frame * 0.3) * 0.3;
+        ctx.strokeStyle = hexA('#c8323a', alpha);
+      } else {
+        // 淡金色虚线
+        ctx.strokeStyle = hexA('#e8c887', 0.4);
+      }
+      ctx.setLineDash([5, 3]);  // 统一虚线
+      ctx.lineWidth = 1.0;
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      if (adjacent) {
+        // 接壤:直接短线
+        ctx.lineTo(p2.x, p2.y);
+      } else {
+        // 远距离:贝塞尔曲线,根据 key 哈希做垂直偏移,避免多条线重叠
+        const hash = key.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
+        const offsetDir = (hash % 2 === 0) ? 1 : -1;
+        const offsetMag = 8 + (hash % 20);  // 8-28 px
+        const mx = (p1.x + p2.x) / 2;
+        const my = (p1.y + p2.y) / 2;
+        const dx = p2.x - p1.x, dy = p2.y - p1.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const nx = -dy / len, ny = dx / len;
+        const cx = mx + nx * offsetMag * offsetDir;
+        const cy = my + ny * offsetMag * offsetDir;
+        ctx.quadraticCurveTo(cx, cy, p2.x, p2.y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+  // 找联盟线两端:优先接壤边境点(实际接触面),否则用首都
+  findAllianceEndpoints(sA, sB) {
+    // 1. 接壤:从 A 前线找邻接 B 的格子
+    const front = sA.frontLine || [];
+    for (const c of front) {
+      for (const n of this.grid.neighbors(c.x, c.y)) {
+        if (n.owner === sB.id) {
+          return {
+            adjacent: true,
+            p1: { x: c.x * CELL_SIZE + CELL_SIZE/2, y: c.y * CELL_SIZE + CELL_SIZE/2 },
+            p2: { x: n.x * CELL_SIZE + CELL_SIZE/2, y: n.y * CELL_SIZE + CELL_SIZE/2 }
+          };
+        }
+      }
+    }
+    // 2. 不接壤:用各自首都
+    return {
+      adjacent: false,
+      p1: { x: sA.capital[0] * CELL_SIZE + CELL_SIZE/2, y: sA.capital[1] * CELL_SIZE + CELL_SIZE/2 },
+      p2: { x: sB.capital[0] * CELL_SIZE + CELL_SIZE/2, y: sB.capital[1] * CELL_SIZE + CELL_SIZE/2 }
+    };
+  }
+  centerOf(id) {
+    const cells = this.grid.cellsOf(id);
+    if (cells.length === 0) {
+      // 已亡国:用首都坐标
+      const s = this.states.get(id);
+      if (s) return { x: s.capital[0] * CELL_SIZE + CELL_SIZE/2, y: s.capital[1] * CELL_SIZE + CELL_SIZE/2 };
+      return null;
+    }
+    let sx = 0, sy = 0;
+    for (const c of cells) { sx += c.x; sy += c.y; }
+    return { x: (sx / cells.length) * CELL_SIZE + CELL_SIZE/2, y: (sy / cells.length) * CELL_SIZE + CELL_SIZE/2 };
+  }
+  drawParticles(ctx) {
+    for (const p of this.engine.particles) {
+      ctx.globalAlpha = p.life;
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - 1, p.y - 1, 2, 2);
+    }
+    ctx.globalAlpha = 1;
+  }
+  // 行军轨迹:在途兵力可视化
+  // 每条 marching 显示为: 起点终点虚线 + 移动中的圆点(代表兵力)
+  drawMarching(ctx) {
+    for (const s of this.states.values()) {
+      if (!s.alive || s.marching.length === 0) continue;
+      for (const m of s.marching) {
+        const fx = m.fromX * CELL_SIZE + CELL_SIZE/2;
+        const fy = m.fromY * CELL_SIZE + CELL_SIZE/2;
+        const tx = m.toX * CELL_SIZE + CELL_SIZE/2;
+        const ty = m.toY * CELL_SIZE + CELL_SIZE/2;
+        // 进度:基于回合 + 帧动画微偏移(让点持续流动)
+        const totalTurns = Math.max(1, m.arriveTurn - m.startTurn);
+        const elapsed = this.engine.turn - m.startTurn;
+        const baseProgress = Math.max(0, Math.min(1, elapsed / totalTurns));
+        // 帧动画:0-1 之间循环(每 30 帧一轮),用于多个小点形成流动效果
+        const animPhase = (this.frame % 30) / 30;
+        // 虚线轨迹(浅色)
+        ctx.strokeStyle = hexA(s.bright, 0.35);
+        ctx.setLineDash([3, 3]);
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(fx, fy);
+        ctx.lineTo(tx, ty);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        // 主兵力点(随回合推进)
+        const px = fx + (tx - fx) * baseProgress;
+        const py = fy + (ty - fy) * baseProgress;
+        // 兵力大小随数量缩放
+        const r = Math.max(2.5, Math.min(5, 2 + m.troops / 80));
+        ctx.fillStyle = s.bright;
+        ctx.beginPath();
+        ctx.arc(px, py, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+        // 兵力数字
+        ctx.fillStyle = '#fff';
+        ctx.font = '9px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(Math.floor(m.troops), px, py - 8);
+        // 流动小点(沿路径分布,营造"行军流"感)
+        for (let i = 0; i < 3; i++) {
+          const t = (animPhase + i / 3) % 1;
+          // 小点在主兵力后方一段路径上分布
+          const subProgress = Math.max(0, baseProgress - 0.15 - t * 0.4);
+          if (subProgress <= 0 || subProgress >= baseProgress) continue;
+          const sx = fx + (tx - fx) * subProgress;
+          const sy = fy + (ty - fy) * subProgress;
+          ctx.fillStyle = hexA(s.bright, 0.5);
+          ctx.beginPath();
+          ctx.arc(sx, sy, 1.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+  }
+}
+
+function hexA(hex, a) {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.substring(0, 2), 16);
+  const g = parseInt(h.substring(2, 4), 16);
+  const b = parseInt(h.substring(4, 6), 16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+// ==================== UIPanel ====================
+class UIPanel {
+  constructor(states, engine, diplomacy, app) {
+    this.states = states;
+    this.engine = engine;
+    this.diplomacy = diplomacy;
+    this.app = app;
+    this.selected = null;
+    this.reportCount = 0;
+    this.bindTabs();
+  }
+  bindTabs() {
+    const tabs = document.getElementById('nationTabs');
+    tabs.innerHTML = '';
+    for (const s of this.states.values()) {
+      const t = document.createElement('div');
+      t.className = 'nation-tab';
+      t.dataset.id = s.id;
+      t.textContent = s.name;
+      t.style.color = s.bright;
+      t.onclick = () => this.select(s.id);
+      tabs.appendChild(t);
+    }
+  }
+  select(id) {
+    this.selected = id;
+    document.querySelectorAll('.nation-tab').forEach(t => {
+      t.classList.toggle('selected', t.dataset.id === id);
+    });
+    this.renderDetail();
+  }
+  addReport(turn, type, text, state) {
+    // 重大事件(灭国/溃败/外交)直接上报;普通战报限速:每国每 5 回合最多 1 条
+    const isMajor = type === 'capital' || type === 'diplomacy';
+    if (!isMajor && state) {
+      const last = state.lastReportTurn || 0;
+      if (turn - last < 5) return;  // 5 回合内已上报过,跳过
+      state.lastReportTurn = turn;
+    }
+    const box = document.getElementById('reports');
+    const r = document.createElement('div');
+    r.className = `report ${type}`;
+    const tag = state ? `<span class="tag" style="background:${state.bright}">${state.name}</span>` : '';
+    r.innerHTML = `<span class="turn">T${turn}</span>${tag}${text}`;
+    box.appendChild(r);
+    // 限制 DOM 节点数,避免堆积卡死
+    while (box.children.length > 120) box.removeChild(box.firstChild);
+    // scrollTop 节流:仅在用户已滚到底部时自动滚动,避免频繁重排
+    if (!this._scrollPending) {
+      this._scrollPending = true;
+      requestAnimationFrame(() => {
+        box.scrollTop = box.scrollHeight;
+        this._scrollPending = false;
+      });
+    }
+    this.reportCount++;
+    document.getElementById('reportCount').textContent = `${this.reportCount} 条`;
+  }
+  renderRanking() {
+    const box = document.getElementById('ranking');
+    const arr = Array.from(this.states.values()).sort((a, b) => b.power() - a.power());
+    const maxPower = Math.max(...arr.map(s => s.power()), 1);
+    box.innerHTML = arr.map((s, i) => {
+      const pct = (s.power() / maxPower) * 100;
+      const dead = s.alive ? '' : 'dead';
+      return `<div class="rank-row ${dead}">
+        <span class="rk">${i+1}</span>
+        <span class="nm" style="color:${s.bright}">${s.name}</span>
+        <span class="bar"><div style="width:${pct}%;background:${s.color}"></div></span>
+        <span class="pw">${Math.floor(s.power())}</span>
+        <span class="ct">${s.cellCount}城</span>
+      </div>`;
+    }).join('');
+  }
+  renderDetail() {
+    const body = document.getElementById('detailBody');
+    if (!this.selected) {
+      body.innerHTML = '<div style="color:#4a4639;text-align:center;padding:20px">点击上方国号查看详情</div>';
+      return;
+    }
+    const s = this.states.get(this.selected);
+    if (!s) return;
+    const top = s.topHatred();
+    const hatedName = top.target ? this.states.get(top.target)?.name : '—';
+    const hatedColor = top.target ? this.states.get(top.target)?.bright : '#4a4639';
+    const inTruce = this.engine.turn < s.truceUntil;
+    const ptName = s.primaryTarget ? this.states.get(s.primaryTarget)?.name : '—';
+    const ptColor = s.primaryTarget ? this.states.get(s.primaryTarget)?.bright : '#4a4639';
+    const capOwned = this.grid_capitalOwned(s);
+    const recentHtml = s.recentBattles.slice(0, 5).map(b =>
+      `<div style="color:#8a8475;font-size:10px">vs ${b.vs} — <span style="color:${b.win ? '#5ac888' : '#c8323a'}">${b.win ? '胜' : '败'}</span></div>`
+    ).join('') || '<div style="color:#4a4639;font-size:10px">无近期战事</div>';
+    const maxHatred = Math.max(100, top.value);
+    const hatredPct = Math.min(100, (top.value / maxHatred) * 100);
+    // 盟约信息(支持多个盟友)
+    let allyInfo = '无盟约';
+    let allyColor = '#4a4639';
+    if (s.allies.size > 0) {
+      const parts = [];
+      let minRemaining = 999;
+      for (const [allyId, exp] of s.allies) {
+        const allyObj = this.states.get(allyId);
+        const remaining = exp - this.engine.turn;
+        if (allyObj && remaining > 0) {
+          parts.push(`${allyObj.name}(${remaining})`);
+          if (remaining < minRemaining) minRemaining = remaining;
+        }
+      }
+      if (parts.length > 0) {
+        allyInfo = parts.join('、');
+        allyColor = minRemaining < 5 ? '#c8323a' : '#e8c887';
+      }
+    } else if (this.engine.turn < s.allyCooldown) {
+      allyInfo = `毁约冷却中 (余 ${s.allyCooldown - this.engine.turn} 回合)`;
+      allyColor = '#8a4a4a';
+    }
+
+    body.innerHTML = `
+      <div class="detail-row"><span class="label">国号</span><span class="val" style="color:${s.bright}">${s.name}</span></div>
+      <div class="detail-row"><span class="label">状态</span><span class="val" style="color:${s.alive ? (inTruce ? '#b8923a' : '#5ac888') : '#c8323a'}">${s.alive ? (inTruce ? '休整中' : (s.stance === 'defend' ? '防御' : '进攻')) : '已亡'}</span></div>
+      <div class="detail-row"><span class="label">都城</span><span class="val" style="color:${capOwned ? '#e8c887' : '#c8323a'}">${capOwned ? '坚守' : '陷落'}</span></div>
+      <div class="detail-row"><span class="label">总兵力</span><span class="val">${Math.floor(s.troops)}</span></div>
+      <div class="detail-row"><span class="label">粮草</span><span class="val">${Math.floor(s.food)}</span></div>
+      <div class="detail-row"><span class="label">民心</span><span class="val" style="color:${s.morale < 50 ? '#c8323a' : (s.morale < 80 ? '#b8923a' : '#5ac888')}">${Math.floor(s.morale)}%</span></div>
+      <div class="detail-row"><span class="label">经济力</span><span class="val">${Math.floor(s.economicPower())}</span></div>
+      <div class="detail-row"><span class="label">军事力</span><span class="val">${Math.floor(s.militaryPower())}</span></div>
+      <div class="detail-row"><span class="label">国力</span><span class="val" style="color:var(--gold-bright)">${Math.floor(s.power())}</span></div>
+      <div class="detail-row"><span class="label">领土</span><span class="val">${s.cellCount} 城</span></div>
+      <div class="detail-row"><span class="label">前线</span><span class="val">${s.frontLine.length} 处</span></div>
+      <div class="detail-row"><span class="label">行军</span><span class="val" style="color:${s.marching.length > 0 ? '#b8923a' : 'var(--ink-faint)'}">${s.marching.length > 0 ? `${s.marching.length} 路 (${s.marching.reduce((sum,m) => sum + Math.floor(m.troops),0)}兵)` : '无'}</span></div>
+      <div class="detail-row"><span class="label">别城</span><span class="val">${s.cityCount} 座</span></div>
+      <div class="detail-row"><span class="label">主将</span><span class="val" style="color:var(--gold)">${s.topGeneral().name} (统帅${s.topGeneral().command})</span></div>
+      <div class="detail-row"><span class="label">人格</span><span class="val" style="font-size:10px;color:#8a8475">战${s.persona.war}/扩${s.persona.expand}/交${s.persona.diplo}</span></div>
+      <div class="detail-row"><span class="label">主攻</span><span class="val" style="color:${ptColor}">${ptName}</span></div>
+      <div class="detail-row"><span class="label">宿敌</span><span class="val" style="color:${hatedColor}">${hatedName}</span></div>
+      <div class="hatred-bar"><div style="width:${hatredPct}%"></div></div>
+      <div class="detail-row"><span class="label">盟约</span><span class="val" style="color:${allyColor}">${allyInfo}</span></div>
+      <div class="detail-row"><span class="label">中立</span><span class="val" style="color:#8a8475">${s.neutralWith.size > 0 ? Array.from(s.neutralWith).map(id => this.states.get(id)?.name || '?').join('、') : '无'}</span></div>
+      <div class="detail-row"><span class="label">战功</span><span class="val">${s.battlesWon}胜 / ${s.battlesLost}败 / ${s.kills}城</span></div>
+      <div class="obj-box">
+        <div class="obj-title">战略目标</div>
+        ${this.getStrategy(s)}
+      </div>
+      <div style="margin-top:6px;font-size:10px;color:#4a4639;letter-spacing:1px">近期战事</div>
+      ${recentHtml}
+    `;
+  }
+  grid_capitalOwned(s) {
+    const c = this.engine.grid.get(s.capital[0], s.capital[1]);
+    return c && c.owner === s.id;
+  }
+  getStrategy(s) {
+    if (!s.alive) return '社稷已亡,无复战略';
+    if (this.engine.turn < s.truceUntil) return `休整至 T${s.truceUntil},恢复国力`;
+    if (s.stance === 'defend') return '转入防御,固守待变';
+    if (s.primaryTarget) {
+      const t = this.states.get(s.primaryTarget);
+      const capC = this.engine.grid.get(t.capital[0], t.capital[1]);
+      const dist = Math.abs(capC.x - s.capital[0]) + Math.abs(capC.y - s.capital[1]);
+      return `集中兵力攻伐 ${t.name},距其都城 ${dist} 步`;
+    }
+    return '观望待机,寻找可乘之隙';
+  }
+  refreshTabs() {
+    document.querySelectorAll('.nation-tab').forEach(t => {
+      const s = this.states.get(t.dataset.id);
+      t.classList.toggle('dead', !s.alive);
+    });
+  }
+}
+
+// ==================== App ====================
+class App {
+  constructor() {
+    this.canvas = document.getElementById('grid');
+    this.speed = 500;
+    this.init();
+  }
+  init() {
+    this.grid = new Grid();
+    this.states = new Map();
+    // 每次 init 重新生成国家配置(含随机出生点)——重置时也会刷新
+    const nations = generateNations();
+    for (const cfg of nations) this.states.set(cfg.id, new State(cfg));
+    this.grid.initNations(nations);
+
+    this.engine = new BattleEngine(this.grid, this.states, (t, ty, txt, s) => this.ui.addReport(t, ty, txt, s));
+    this.diplomacy = new DiplomacyManager(this.grid, this.states, (t, ty, txt, s) => this.ui.addReport(t, ty, txt, s));
+    this.renderer = new Renderer(this.canvas, this.grid, this.states, this.engine);
+    this.ui = new UIPanel(this.states, this.engine, this.diplomacy, this);
+
+    this.running = false;
+    this.timer = null;
+
+    this.bindControls();
+    this.bindHover();
+    this.ui.select('qin');
+    this.ui.renderRanking();
+    this.updateStatus('已就绪');
+    this.render();
+  }
+  bindControls() {
+    document.getElementById('btnPlay').onclick = () => this.toggle();
+    document.getElementById('btnStep').onclick = () => this.step();
+    document.getElementById('btnReset').onclick = () => this.reset();
+    const speedEl = document.getElementById('speed');
+    const labelEl = document.getElementById('speedLabel');
+    // 非线性映射:滑块 0-100 -> 实际延迟 30-2000ms (指数曲线,低端精细,高端粗略)
+    // 使用 delay = 30 * (2000/30)^(t/100),t=0 时 30ms,t=100 时 2000ms
+    const sliderToDelay = (t) => Math.round(30 * Math.pow(2000 / 30, t / 100));
+    const delayToSlider = (d) => Math.round(100 * Math.log(d / 30) / Math.log(2000 / 30));
+    speedEl.oninput = (e) => {
+      this.speed = sliderToDelay(+e.target.value);
+      labelEl.textContent = this.speed + 'ms';
+      if (this.running) { this.stop(); this.start(); }
+    };
+    // 初始化标签
+    labelEl.textContent = this.speed + 'ms';
+    speedEl.value = delayToSlider(this.speed);
+  }
+  bindHover() {
+    const tip = document.getElementById('hoverTip');
+    this.canvas.onmousemove = (e) => {
+      const rect = this.canvas.getBoundingClientRect();
+      const scaleX = this.canvas.width / rect.width;
+      const scaleY = this.canvas.height / rect.height;
+      const x = Math.floor((e.clientX - rect.left) * scaleX / CELL_SIZE);
+      const y = Math.floor((e.clientY - rect.top) * scaleY / CELL_SIZE);
+      const c = this.grid.get(x, y);
+      if (c) {
+        this.renderer.hoverCell = c;
+        const owner = c.owner ? this.states.get(c.owner) : null;
+        const contest = c.contestingOwner ? this.states.get(c.contestingOwner) : null;
+        const terrainName = ['平原', '山脉', '湖泊'][c.terrain];
+        // 经济产出:平原 +10/山脉 +5/湖泊 0
+        const eco = c.terrain === 0 ? 10 : (c.terrain === 1 ? 5 : 0);
+        tip.style.display = 'block';
+        tip.style.left = (e.clientX - rect.left + 14) + 'px';
+        tip.style.top = (e.clientY - rect.top + 14) + 'px';
+        tip.innerHTML = `(${x},${y}) ${terrainName} · 产粮+${eco}` +
+          (c.capital ? ' · 都城' : '') +
+          (c.city && !c.capital ? ' · 别城' : '') +
+          (c.fortress && !c.capital && !c.city ? ' · 关隘' : '') +
+          (c.granary && !c.capital ? ' · 粮仓' : '') +
+          (owner ? `<br>归属: <span style="color:${owner.bright}">${owner.name}</span> · 民心${Math.floor(owner.morale)}%` : '<br>无主') +
+          (c.garrison ? `<br>驻军: ${Math.floor(c.garrison)}` : '') +
+          (contest ? `<br>交战: <span style="color:${contest.bright}">${contest.name}</span> (${c.contestTurns}/${CONTEST_TURNS})` : '') +
+          (owner ? `<br><span style="color:#6a8aa8">[点击] 增兵 ${owner.name}</span>` : '');
+        if (c.owner) this.ui.select(c.owner);
+      } else {
+        this.renderer.hoverCell = null;
+        tip.style.display = 'none';
+      }
+    };
+    this.canvas.onmouseleave = () => { this.renderer.hoverCell = null; tip.style.display = 'none'; };
+    // 点击:为该格归属国增兵(每次 +50)
+    this.canvas.onclick = (e) => {
+      const rect = this.canvas.getBoundingClientRect();
+      const scaleX = this.canvas.width / rect.width;
+      const scaleY = this.canvas.height / rect.height;
+      const x = Math.floor((e.clientX - rect.left) * scaleX / CELL_SIZE);
+      const y = Math.floor((e.clientY - rect.top) * scaleY / CELL_SIZE);
+      const c = this.grid.get(x, y);
+      if (!c || !c.owner) return;
+      const s = this.states.get(c.owner);
+      if (!s || !s.alive) return;
+      const ADD = 1000;
+      s.troops += ADD;
+      c.garrison += ADD;
+      c.dirty = true;
+      this.ui.select(c.owner);
+      this.flashStatus(`+${ADD} 兵 → ${s.name}`);
+    };
+  }
+  // 状态栏短暂提示
+  flashStatus(text) {
+    if (this._flashTimer) clearTimeout(this._flashTimer);
+    const el = document.getElementById('statusText');
+    el.textContent = text;
+    el.style.color = 'var(--gold-bright)';
+    this._flashTimer = setTimeout(() => {
+      el.style.color = '';
+      el.textContent = this.running ? '推演中' : '已暂停';
+    }, 1500);
+  }
+  toggle() {
+    if (this.running) this.stop();
+    else this.start();
+  }
+  start() {
+    this.running = true;
+    document.getElementById('btnPlay').textContent = '⏸ 暂停';
+    document.getElementById('btnPlay').classList.add('active');
+    if (this.timer) clearInterval(this.timer);
+    this.timer = setInterval(() => this.step(), this.speed);
+    this.updateStatus('推演中');
+  }
+  stop() {
+    this.running = false;
+    document.getElementById('btnPlay').textContent = '▶ 启动';
+    document.getElementById('btnPlay').classList.remove('active');
+    if (this.timer) { clearInterval(this.timer); this.timer = null; }
+    this.updateStatus('已暂停');
+  }
+  step() {
+    this.engine.tick();
+    this.diplomacy.tick(this.engine.turn);
+    document.getElementById('turnCount').textContent = this.engine.turn;
+    const alive = Array.from(this.states.values()).filter(s => s.alive).length;
+    document.getElementById('aliveCount').textContent = alive;
+    this.ui.refreshTabs();
+    this.ui.renderRanking();
+    if (this.ui.selected) this.ui.renderDetail();
+    if (alive <= 1) {
+      this.stop();
+      const winner = Array.from(this.states.values()).find(s => s.alive);
+      if (winner) this.ui.addReport(this.engine.turn, 'capital', `${winner.name}一统天下,霸业成!`, winner);
+      this.updateStatus(`${winner?.name || '无人'}一统`);
+    }
+  }
+  reset() {
+    this.stop();
+    document.getElementById('reports').innerHTML = '';
+    this.ui.reportCount = 0;
+    document.getElementById('reportCount').textContent = '0 条';
+    document.getElementById('turnCount').textContent = '0';
+    document.getElementById('aliveCount').textContent = '7';
+    this.init();
+  }
+  updateStatus(txt) {
+    document.getElementById('statusText').textContent = txt;
+  }
+  render() {
+    // 用 renderer 引用判断:reset 后 renderer 被替换,旧循环自动停止
+    const r = this.renderer;
+    const loop = () => {
+      if (this.renderer !== r) return;  // 已被新循环取代
+      r.draw();
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+  }
+}
+
+const app = new App();
+</script>
+</body>
+</html>
