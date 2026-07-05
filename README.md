@@ -1,3 +1,173 @@
+# Warring States: Grid Hegemony Simulator
+
+> A pure front-end strategy sandbox simulator of the Warring States period. Seven powers clash on a 30×30 grid, with AI engaging in autonomous gameplay while players can intervene to alter the course of history.
+
+## Project Overview
+
+*Warring States* is a grid-based strategy simulator set in the ancient Chinese Warring States era. The seven states of Qin, Zhao, Yan, Qi, Chu, Han, and Wei engage in autonomous gameplay on a 30×30 grid sandbox: internal administration, diplomatic alliances, military conquests, state collapse and partition, and reunification—all driven by AI decision-making. Players observe the simulation from a "Mandate of Heaven" perspective and can click on grid cells to deploy troops and intervene in the unfolding conflict.
+
+The entire project is built as a **single HTML file using vanilla JavaScript and Canvas**, with zero dependencies. Simply open it in a browser to play.
+
+---
+
+## Core Features
+
+### 1. Deep AI Strategy
+
+AI decision-making does not rely on a single metric but uses a 5-dimensional scoring system to select primary targets:
+
+| Dimension | Weight | Description |
+|------|------|------|
+| Power Gap | ×1.0 | Prioritize attacking weaker states |
+| Geopolitical Value | ×25 | Weighted strategic value of passes, granaries, cities, and capitals |
+| Border Length | ×3 | Longer shared borders increase invasion likelihood |
+| Vulnerable Zones | ×8 | Enemy anchor points far from their frontlines indicate weak defense |
+| Allied Coordination | ×80 | Prioritize joining a siege if an ally has already declared war on the target |
+
+- **Single-Front AI**: Non-dominant powers concentrate attacks on a single front; dominant powers can advance on multiple fronts.
+- **Primary Attack Anchor**: Once a target is selected, an anchor is set at the army's rally point. The AI actively attacks within a 4-cell radius, while other borders only have a 25% chance of self-defense.
+- **Stalemate Breaking**: Forces an attack during prolonged periods of no warfare; late-game fatigue coefficients accelerate decisive battles.
+- **General Command**: Influences military power; new generals can be recruited every 100 turns.
+
+### 2. Diplomatic System
+
+- **Multiple Alliances**: Each state can have up to 2 allies, with alliance durations ranging from 150 to 300 turns (Vertical Alliance: 250-300; Horizontal Alliance: 150-220).
+- **Neutrality**: Neither allied nor at war; neutral states have a 90% chance of not attacking each other.
+- **Coordinated Sieges**: Dominant powers rally allies to declare war on the same target.
+- **Defense Requests**: Attacked states notify allies; if an ally shares a border with the attacker, they may send reinforcements based on their diplomatic persona probability.
+- **Dynamic Hatred**: +12 for occupying territory, +25 for non-war targets; hatred decays over time.
+
+### 3. Military System
+
+- **Troop Visualization**: Darker shades of the same color indicate stronger troop concentrations, based on the distance to the frontline (0 = darkest, ≥6 = lightest), with moderate darkening around capitals.
+- **March Delay + Trajectory Animation**: Troop deployment is not instantaneous; it takes N turns to arrive (1 turn per 3 cells). The dynamic layer draws dashed trajectories, moving troop dots, and flowing particles in real-time.
+- **City Victory Formula**: `P = (A/B)^1.5 / ((A/B)^1.5 + 1)`, amplifying the power gap; overwhelming national power leads to direct crushing.
+- **Rout Mechanism**: Losing 2 consecutive cells triggers a rout; weaker states have lower thresholds and higher probabilities.
+- **Three-Dimensional National Power**: Economic Power (Territory + Vassal Cities + Grain) × 0.4 + Military Power (Troops × Commander) × 0.5 + Morale × 0.1.
+
+### 4. State Collapse and Reunification
+
+- **Smart Capital Relocation**: Triggered when the capital is threatened (Enemy distance ≤1 and Enemy count ≥2, or Power Ratio <0.6).
+  - 4-Dimensional Candidate Scoring: Distance from enemy ×3 + Distance from frontline ×2 + Plains hinterland ×1.5 + Moderate distance from old capital ×0.5.
+  - 30-turn cooldown, costs 150 grain, -8 morale, and 2/3 of the garrison relocates.
+- **Partition on Collapse**: Upon the capital's fall, remaining territories are clustered into 1-3 minor states using k-means, with 5 naming prefixes (Later/Puppet/South/North/Remnant) randomly shuffled.
+  - Partitioned states can only be split once (they do not split further if destroyed again).
+- **Reunification Mechanism**: If a partitioned minor state recaptures the original capital, it consolidates all同源 (same-origin) partitioned states and re-emerges as a major power.
+
+### 5. Dynamic City Building & Historical Events
+
+- **Dynamic City Building**: Every 100 turns, each state can build one vassal city (fortress + defense bonus). It is automatically removed if captured.
+- **Historical Events** (60% trigger rate every 50 turns):
+  - Shang Yang's Reforms (Economy +30%, Morale -20%)
+  - Natural Disaster (Grain -200, Morale -15%)
+  - Enlightened Monarch (Morale +25, Troops +100)
+  - Bumper Harvest (Grain +400)
+  - Renowned General Arrives (Command +70 to 90)
+  - Internal Rebellion (Morale -30, Troops -80)
+
+### 6. Terrain & Strategic Elements
+
+- **Plains**: Base economic +10.
+- **Mountains**: Occupiable, +50% defense.
+- **Lakes**: Impassable.
+- **Capital ★**: Loss of the capital means state collapse.
+- **Vassal City ●**: Economic bonus; removed upon capture.
+- **Granary ▲**: Yields 300 grain upon capture.
+- **Passes**: Terrain with defense bonuses.
+
+### 7. Player Intervention
+
+- **Click Cell to Deploy Troops (+1000)**: Adds troops to the owning state of the cell (syncs `troops` and `garrison`).
+- **Hover for Details**: Displays real-time terrain, ownership, garrison, and combat status.
+- **State Details Panel**: Shows national power, morale, frontlines, troop movements, alliances, hatred, and strategic objectives.
+
+---
+
+## Technical Architecture
+
+### Rendering Layer (Dual Canvas)
+
+- **Static Layer**: Terrain + national colors (troop depth) + city/capital/granary markers + grid lines + national borders.
+  - Dirty-cell incremental updates + neighbor redraw mechanism (avoids border overlapping).
+  - Unified `drawGridLines` single-pass rendering with 0.5px pixel alignment.
+- **Dynamic Layer**: Combat flashing + alliance dashed lines + march trajectories + particles; redrawn every frame.
+- **Alliance Lines**: Short dashed lines for adjacent borders; Bezier curve offsets for long-distance to avoid overlapping; red flashing when expiring.
+
+### ES6+ Class Architecture
+
+```
+BattleEngine     - Combat simulation / AI decision-making / march management
+DiplomacyManager - Diplomatic evaluation / alliances / coordinated sieges
+Renderer         - Dual-layer rendering / animations
+UIPanel          - Power rankings / battle logs / details
+App              - Entry point / event binding / game loop
+```
+
+### Performance Optimization
+
+- Dual-layer rendering + dirty-cell incremental updates.
+- Particle ring buffer (max 280, overwriting reuse).
+- rAF throttled rendering loop.
+- Old rendering loop auto-stops (after reset, verified via renderer reference comparison).
+- BFS distance-to-frontline calculation with a radius-6 scan for approximate enemy distance.
+
+---
+
+## Gameplay Instructions
+
+1. **▶ Start**: Begin automatic simulation.
+2. **⏭ Next Turn**: Manually advance one turn (for observing details).
+3. **↻ Reset**: Randomly regenerate the starting positions of the seven states (every reset creates a new game).
+4. **Speed Slider**: Exponential curve mapping from 30ms to 2000ms.
+5. **Click Cell**: Deploy +1000 troops for that state (intervene in the war).
+6. **Hover**: View information for any cell; automatically selects the owning state for detailed viewing.
+
+---
+
+## Engineering Highlights
+
+- **Single File**: Pure HTML + JS + Canvas, zero dependencies, fully offline-capable.
+- **Historical Aesthetic**: Dark gold theme, Song-typeface state names, classical Chinese battle logs, ink-wash sandbox style.
+- **Dynamic Balance**: Late-game fatigue coefficients (≤4 states: 1.4 / ≤3 states: 1.8 / ≤2 states: 2.5) force decisive battles and prevent stalemates.
+- **Meticulous Details**: Pixel-aligned grid lines, anti-aliasing, dirty neighbor redrawing, and isolated rendering side effects.
+
+---
+
+## Seven States Configuration
+
+The seven states spawn randomly within their respective historical regional zones. They may spawn closer to the Central Plains (dangerous but advantageous for expansion) or further back (safe but marginalized):
+
+| State | Region |
+|----|------|
+| Qin | Northwest (Guanzhong → Central Plains) |
+| Zhao | North (Dai Region → Central Plains) |
+| Yan | Northeast (Ji-Liao → Central Plains) |
+| Qi | East (Qi-Lu → Central Plains) |
+| Chu | Southeast (Jing-Chu → Central Plains) |
+| Han | South (Han Territory → Central Plains) |
+| Wei | Southwest (Wei-Liang → Central Plains) |
+
+---
+
+## Tech Stack
+
+- HTML5 Canvas (Dual-layer rendering)
+- Vanilla JavaScript ES6+ (Class architecture)
+- Zero third-party dependencies
+
+---
+
+## Use Cases
+
+- Strategy game prototype design reference
+- AI decision-making system teaching example
+- Canvas performance optimization practice
+- Warring States historical sandbox visualization
+
+---
+
+Open `index.html` to begin the struggle for hegemony. Unite the realm, and forge your empire.
+
 
 # 战国七雄 · 网格争霸模拟器
 
