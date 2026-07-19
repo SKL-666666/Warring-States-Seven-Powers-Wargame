@@ -149,6 +149,62 @@
     color: var(--ink); pointer-events: none;
     z-index: 10; white-space: nowrap; display: none;
   }
+  /* 玩家控制面板(双击国家弹出) */
+  .ctrl-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 100; display: none;
+    justify-content: center; align-items: center;
+  }
+  .ctrl-overlay.show { display: flex; }
+  .ctrl-panel {
+    background: var(--bg-2);
+    border: 1px solid var(--gold);
+    width: 460px; max-height: 80vh;
+    overflow-y: auto;
+    padding: 16px 18px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.7);
+  }
+  .ctrl-title {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 12px; padding-bottom: 8px;
+    border-bottom: 1px solid var(--panel-border);
+  }
+  .ctrl-title h3 { margin: 0; font-size: 15px; }
+  .ctrl-close {
+    cursor: pointer; color: var(--ink-faint);
+    font-size: 18px; padding: 0 6px;
+  }
+  .ctrl-close:hover { color: var(--gold-bright); }
+  .ctrl-section { margin-bottom: 14px; }
+  .ctrl-section-title {
+    font-size: 11px; color: var(--ink-faint);
+    letter-spacing: 1px; margin-bottom: 6px;
+  }
+  .ctrl-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 6px; font-size: 12px;
+  }
+  .ctrl-row .label { color: var(--ink-faint); min-width: 56px; }
+  .ctrl-row .val { color: var(--gold-bright); min-width: 50px; text-align: right; }
+  .ctrl-btns { display: flex; gap: 4px; }
+  .ctrl-btn {
+    background: var(--bg-1); border: 1px solid var(--panel-border);
+    color: var(--ink); padding: 3px 10px; cursor: pointer;
+    font-size: 12px; min-width: 36px;
+  }
+  .ctrl-btn:hover { background: var(--gold); color: var(--bg-1); }
+  .ctrl-btn.warn:hover { background: var(--accent); color: #fff; }
+  .ctrl-btn.good:hover { background: #3a7a52; color: #fff; }
+  .ctrl-diplo-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 5px 0; font-size: 11px;
+    border-bottom: 1px dashed var(--panel-border);
+  }
+  .ctrl-diplo-row:last-child { border-bottom: none; }
+  .ctrl-diplo-name { min-width: 40px; }
+  .ctrl-diplo-state { color: var(--ink-faint); min-width: 70px; font-size: 10px; }
+  .ctrl-diplo-act { display: flex; gap: 4px; }
   .reports-panel {
     grid-area: reports;
     background: var(--bg-2);
@@ -343,7 +399,7 @@
         <div class="legend-row"><span class="legend-swatch" style="background:#e8c887"></span>★ 都城 / ● 别城 / ▲ 粮仓</div>
         <div class="legend-row"><span style="font-size:9px;color:#8a8475">驻军:同色越深兵力越强(浅=弱 · 深=强)</span></div>
         <div class="legend-row"><span style="font-size:9px;color:#6a8aa8">时令:春粮+25% · 秋粮+50% · 冬攻-15%</span></div>
-        <div class="legend-row"><span style="font-size:9px;color:#6a8aa8">点击格子:为该国增兵 +2000</span></div>
+        <div class="legend-row"><span style="font-size:9px;color:#6a8aa8">单击:全面增强该国(兵/粮/心/将) · 双击:君王操纵台</span></div>
       </div>
     </div>
     <div class="hover-tip" id="hoverTip"></div>
@@ -362,6 +418,11 @@
       </div>
     </div>
   </aside>
+</div>
+
+<!-- 玩家控制面板(双击国家弹出) -->
+<div class="ctrl-overlay" id="ctrlOverlay">
+  <div class="ctrl-panel" id="ctrlPanel"></div>
 </div>
 
 <script type="module">
@@ -905,31 +966,38 @@ class State {
   }
   // 主将统帅力(取最高)
   topGeneral() { return this.generals.reduce((m, g) => g.command > m.command ? g : m, this.generals[0]); }
-  // 经济力:领土产出(平原 10/格, 山脉 5/格) + 别城(+30/座) + 粮草
-  // 使用 tick 中缓存的地形统计 _plainCount/_mountainCount,避免重复遍历
+  // 经济力:领土产出(平原 10/格, 山脉 4/格, 河流 6/格) + 别城(+40/座) + 粮草折算
+  // 使用 tick 中缓存的地形统计,避免重复遍历;粮草权重提升至 0.2
   economicPower() {
-    const plain = this._plainCount ?? this.cellCount;  // 缓存未就绪时回退
+    const plain = this._plainCount ?? this.cellCount;
     const mountain = this._mountainCount ?? 0;
-    const terrainBase = plain * 10 + mountain * 5;
-    return terrainBase + this.cityCount * 30 + this.food * 0.15;
+    // 平原 10, 山脉 4(产出低但防御高), 别城 +40
+    const terrainBase = plain * 10 + mountain * 4;
+    return terrainBase + this.cityCount * 40 + this.food * 0.2;
   }
-  // 军事力:兵力 × (1 + 主将统帅力/200) × 民心系数
-  // 民心 100 → 1.15 倍,民心 50 → 1.0 倍,民心 0 → 0.7 倍(军心涣散战力大跌)
+  // 军事力:兵力 × 统帅系数 × 民心系数 × 粮草系数
+  // 统帅 100 → 1.5 倍, 50 → 1.25 倍, 0 → 1.0 倍(扩大统帅影响)
+  // 民心 100 → 1.2 倍, 50 → 1.0 倍, 0 → 0.5 倍(军心涣散战力腰斩)
+  // 粮草 >300 → 1.1 倍, 粮草 ≤0 → 0.6 倍(饿兵难战)
   militaryPower() {
     const g = this.topGeneral();
-    const morFactor = 0.7 + (this.morale / 100) * 0.45;
-    return this.troops * (1 + g.command / 200) * morFactor;
+    const cmdFactor = 1.0 + g.command / 100 * 0.5;  // 1.0~1.5
+    const morFactor = 0.5 + (this.morale / 100) * 0.7;  // 0.5~1.2
+    const foodFactor = this.food <= 0 ? 0.6 : (this.food > 300 ? 1.1 : 1.0);
+    return this.troops * cmdFactor * morFactor * foodFactor;
   }
-  // 国力总值 = (经济 × 0.35) + (军事 × 0.45) + (民心 × 6) + 粮草加成
-  // 民心权重 2→6,粮草通过 economicPower 与独立项双重计入
+  // 国力总值 = 经济 × 0.3 + 军事 × 0.5 + 民心 × 4 + 都城/别城加成
+  // 各项权重重新平衡:军事主导(0.5),经济次之(0.3),民心独立项(4,折合 0~400)
   power() {
     if (!this.alive) return -99999;
     const eco = this.economicPower();
     const mil = this.militaryPower();
     const mor = this.morale;  // 0-100
+    // 都城/别城加成:反映行政中心的价值
+    const cityBonus = (this.cityCount + 1) * 20;
     // 粮草断绝时国力额外衰减(后勤崩塌)
     const foodFactor = this.food <= 0 ? 0.7 : 1.0;
-    return (eco * 0.35 + mil * 0.45 + mor * 6) * foodFactor;
+    return (eco * 0.3 + mil * 0.5 + mor * 4 + cityBonus) * foodFactor;
   }
   topHatred() {
     let max = 0, target = null;
@@ -1573,15 +1641,15 @@ class BattleEngine {
     // 强国 2:1 时攻击力为 ~0.45A,弱国 1:2 时仅 ~0.056A,确保弱国难以反击
     const ratio = attacker.troops / Math.max(1, defTroopsTotal || 1);
     const powerRatio = Math.pow(ratio, 1.5);
-    // 民心/粮草战力修正:民心高→军心稳(+15%),民心低→哗变风险(-25%)
-    // 粮草充足(>200)→后勤有力(+10%),粮草断绝→疲弱(-20%)
-    const atkMoraleMod = 0.85 + (attacker.morale / 100) * 0.30;  // 0.85~1.15
-    const atkFoodMod = attacker.food <= 0 ? 0.80 : (attacker.food > 200 ? 1.10 : 1.0);
+    // 民心/粮草战力修正(与 militaryPower 一致):
+    // 民心 100→1.2, 50→1.0, 0→0.5(军心涣散); 粮草>300→1.1, ≤0→0.6(饿兵难战)
+    const atkMoraleMod = 0.5 + (attacker.morale / 100) * 0.7;
+    const atkFoodMod = attacker.food <= 0 ? 0.6 : (attacker.food > 300 ? 1.1 : 1.0);
     const atkForce = (attacker.troops * 0.16) * powerRatio * (0.85 + Math.random() * 0.3) * terrainMod * season.atkMul * atkMoraleMod * atkFoodMod;
     const defBonus = target.fortress ? 1.2 : (target.capital ? 1.8 : 1.0);
-    // 防守方民心/粮草修正:守城军心同样受民心影响
-    const defMoraleMod = defender ? (0.85 + (defender.morale / 100) * 0.30) : 1.0;
-    const defFoodMod = defender ? (defender.food <= 0 ? 0.80 : (defender.food > 200 ? 1.10 : 1.0)) : 1.0;
+    // 防守方民心/粮草修正
+    const defMoraleMod = defender ? (0.5 + (defender.morale / 100) * 0.7) : 1.0;
+    const defFoodMod = defender ? (defender.food <= 0 ? 0.6 : (defender.food > 300 ? 1.1 : 1.0)) : 1.0;
     const defForce = target.owner
       ? target.garrison * defBonus * (0.9 + Math.random() * 0.2) * defMoraleMod * defFoodMod
       : (target.granary ? 30 : 8);
@@ -1747,6 +1815,9 @@ class BattleEngine {
     for (const allyId of victim.allies.keys()) {
       const ally = this.states.get(allyId);
       if (!ally || !ally.alive) continue;
+      // 关键校验:盟友不能是攻击者本身,也不能与攻击者是盟国(避免自打自)
+      if (ally.id === attacker.id) continue;
+      if (ally.allies.has(attacker.id)) continue;
       // 盟友必须与攻击者接壤才能支援
       const cells = this.grid.cellsOf(ally.id);
       let borders = false;
@@ -1814,23 +1885,31 @@ class BattleEngine {
     const season = seasonMod(this.turn);  // 季节粮产加成
     for (const s of this.states.values()) {
       if (!s.alive) continue;
-      // 兵力生成基于国力:国力越强,每回合产兵越多
-      // 公式:基础25 + 领土产出(cellCount×5) + 国力加成(power×0.005)
-      const powerBonus = s.power() * 0.005;
-      // 民心影响征兵效率:民心100→1.3倍,民心50→1.0倍,民心0→0.5倍(无人应征)
-      const moraleRecruitMod = 0.5 + (s.morale / 100) * 0.8;
-      const recover = (((s.cellCount * 5) + 25 + powerBonus) * moraleRecruitMod) / lateGameFatigue;
-      const foodConsume = s.cellCount * 0.6 * lateGameFatigue;
-      // 季节粮产:春+25%,秋+50%,冬-20%
-      const foodGain = s.cellCount * 1.0 * season.foodMul;
+      // 征兵公式重构:领土(平原主导) + 别城 + 民心系数 + 粮草保障
+      // 去除 powerBonus(避免马太效应:强国越强);改用城市/领土作为人口基础
+      const plain = s._plainCount ?? s.cellCount;
+      const mountain = s._mountainCount ?? 0;
+      const populationBase = plain * 4 + mountain * 1.5 + s.cityCount * 20;  // 平原人口多,山脉少
+      // 民心影响征兵效率:民心100→1.4倍,民心50→0.95倍,民心0→0.4倍
+      const moraleRecruitMod = 0.4 + (s.morale / 100) * 1.0;
+      // 粮草保障:粮草>300→1.2倍,粮草≤0→0.5倍(无粮不聚兵)
+      const foodRecruitMod = s.food <= 0 ? 0.5 : (s.food > 300 ? 1.2 : 1.0);
+      const recover = ((populationBase + 20) * moraleRecruitMod * foodRecruitMod) / lateGameFatigue;
+      // 粮草消耗:人口+军队双驱动(不再是单纯领土×0.6)
+      // 兵越多消耗越大,模拟后勤压力
+      const foodConsume = (s.cellCount * 0.4 + s.troops * 0.002) * lateGameFatigue;
+      // 季节粮产:基于平原格(山脉产出低) + 别城加成
+      const foodGain = (plain * 1.2 + mountain * 0.3 + s.cityCount * 3) * season.foodMul;
       s.food += foodGain;
       const minTroops = s.initTroops * MIN_TROOPS_RATIO;
       // ≤3 国时每回合额外消耗兵力(加速决战)
       const attrition = aliveCount <= 3 ? s.troops * 0.005 : 0;
       s.troops = Math.max(minTroops, s.troops - attrition);
-      // 兵力上限也随国力增长(强国可养更多兵);民心低则上限下调(兵源枯竭)
+      // 兵力上限:领土承载 + 民心 + 粮草三因素
+      // 粮草充裕时可养更多兵,粮草断绝时上限腰斩
       const moraleCapMod = 0.7 + (s.morale / 100) * 0.3;  // 0.7~1.0
-      const troopCap = (s.initTroops * 1.6 + s.power() * 0.02) * moraleCapMod;
+      const foodCapMod = s.food <= 0 ? 0.5 : (s.food > 300 ? 1.15 : 1.0);
+      const troopCap = (s.initTroops * 1.4 + (plain * 3 + s.cityCount * 15)) * moraleCapMod * foodCapMod;
       if (s.food > foodConsume) {
         s.food -= foodConsume;
         if (this.turn >= s.truceUntil) {
@@ -1962,15 +2041,45 @@ class BattleEngine {
     victim.cellCount = 0;
     // 收编残部 30% 给征服者
     attacker.troops += Math.floor(victim.troops * 0.3);
-    // 2. 剩余领土分裂为 1-3 个小国(后/伪/南)
+    // 2. 剩余领土分裂为 1-3 个小国
     //    分裂小国(isRump)被灭后不再分裂,直接归征服者(最多迭代一次)
     const remaining = this.grid.cellsOf(victim.id).filter(c => !c.capital);
     if (!victim.isRump && remaining.length >= 3) {
       // 按地理位置聚为最多 3 簇
       const clusters = this.clusterCells(remaining, 3);
-      // 5 种命名前缀,随机洗牌取前 3 个(避免每次都叫后/伪/南)
-      const allPrefixes = ['后', '伪', '南', '北', '残'];
-      const prefixes = allPrefixes.sort(() => Math.random() - 0.5).slice(0, 3);
+      // 扩充命名前缀池(11 种),按簇相对原首都的方位选择最贴近的前缀
+      // 史实参考:东周/西周/南明/北汉/后唐/前赵/残宋/伪齐 等
+      const prefixPool = ['前', '后', '东', '西', '南', '北', '上', '下', '中', '伪', '残'];
+      // 备选前缀(方位已用完或簇太多时使用)
+      const altPool = ['小', '别', '支'];
+      // 计算每个簇相对原首都的方位,选最匹配的前缀
+      const [vcx, vcy] = victim.capital;
+      const usedPrefix = new Set();
+      const prefixes = [];
+      for (const cluster of clusters) {
+        // 簇中心
+        const cx = cluster.reduce((s, c) => s + c.x, 0) / cluster.length;
+        const cy = cluster.reduce((s, c) => s + c.y, 0) / cluster.length;
+        const dx = cx - vcx;  // 簇相对原首都的 x 偏移(正=东, 负=西)
+        const dy = cy - vcy;  // y 偏移(正=南, 负=北)
+        // 方位判定:优先用主方位
+        let pref = null;
+        const absX = Math.abs(dx), absY = Math.abs(dy);
+        if (absX > absY * 1.5 && dx > 0) pref = '东';
+        else if (absX > absY * 1.5 && dx < 0) pref = '西';
+        else if (absY > absX * 1.5 && dy > 0) pref = '南';
+        else if (absY > absX * 1.5 && dy < 0) pref = '北';
+        else if (absX < 1 && absY < 1) pref = '中';  // 簇就在原首都附近
+        else if (dx > 0 && dy > 0) pref = '下';       // 东南为下(古图方位)
+        else if (dx < 0 && dy < 0) pref = '上';       // 西北为上
+        else pref = ['伪', '残', '别'][Math.floor(Math.random() * 3)];
+        // 前缀去重(已用则改用备选池)
+        if (usedPrefix.has(pref)) {
+          pref = altPool.find(p => !usedPrefix.has(p)) || pref;
+        }
+        usedPrefix.add(pref);
+        prefixes.push(pref);
+      }
       let created = 0;
       for (let i = 0; i < clusters.length && created < 3; i++) {
         const cluster = clusters[i];
@@ -2335,6 +2444,10 @@ class DiplomacyManager {
           const ally = this.states.get(allyId);
           if (!ally || !ally.alive) continue;
           if (ally.warTargets.has(targetId)) continue;  // 已宣战
+          // 关键校验:不能自己打自己,也不能打自己的盟友
+          if (ally.id === targetId) continue;            // 盟友就是目标本身
+          if (ally.allies.has(targetId)) continue;        // 盟友与目标是盟国
+          if (target.allies.has(allyId)) continue;         // 目标与盟友是盟国
           // 必须与目标接壤(否则无法参与)
           const borders = this.bordersWith(ally.id, targetId);
           if (!borders) continue;
@@ -2379,6 +2492,25 @@ class DiplomacyManager {
       }
     }
   }
+  // 撕毁盟约(含惩罚):撕毁方承受民心重创 + 声望受损 + 长冷却
+  breakAllianceWithPenalty(turn, breaker, victim, reason) {
+    breaker.breakAlliance(turn, victim.id, reason);
+    victim.breakAlliance(turn, breaker.id, '被撕毁');
+    // 双方仇恨 +40
+    breaker.hatred[victim.id] = (breaker.hatred[victim.id] || 0) + 40;
+    victim.hatred[breaker.id] = (victim.hatred[breaker.id] || 0) + 40;
+    // 撕毁方惩罚:
+    // 1. 民心 -15(失信于天下,百姓离心)
+    breaker.morale = Math.max(0, breaker.morale - 15);
+    // 2. 撕毁冷却延长(30 回合,普通 10)
+    breaker.allyCooldown = turn + 30;
+    // 3. 其他诸国对撕毁方仇恨 +5(视为不可靠,日后难再结盟)
+    for (const s of this.states.values()) {
+      if (s.id === breaker.id || s.id === victim.id || !s.alive) continue;
+      s.hatred[breaker.id] = (s.hatred[breaker.id] || 0) + 5;
+    }
+    this.report(turn, 'diplomacy', `${breaker.name}愤而撕毁与${victim.name}盟约,${reason}!失信于天下,民心离散`, breaker);
+  }
   // 多盟约:每国最多 maxAllies 个盟友(动态:3/2/1),可单方面撕毁
   evaluateAlliances(turn) {
     const alive = Array.from(this.states.values()).filter(s => s.alive);
@@ -2395,7 +2527,7 @@ class DiplomacyManager {
     // 合纵反制:当一国国力 > 其他六国总和的 40% 时,弱国结盟成功率+30%,盟约上限+50
     const othersPowerSum = alive.filter(s => s !== strongest).reduce((sum, s) => sum + s.power(), 0);
     const counterCoalition = strongest.power() > othersPowerSum * 0.4;
-    // 1. 撕毁检查
+    // 1. 撕毁检查(提高阈值 + 撕毁惩罚)
     for (const s of alive) {
       if (s.allies.size === 0) continue;
       if (turn < s.allyCooldown) continue;
@@ -2404,24 +2536,14 @@ class DiplomacyManager {
         if (!allyObj || !allyObj.alive) {
           s.allies.delete(allyId); continue;
         }
-        // 仇恨盟友超过阈值 -> 撕毁
-        if ((s.hatred[allyId] || 0) > 30) {
-          s.breakAlliance(turn, allyId, '仇恨累积');
-          if (allyObj) allyObj.breakAlliance(turn, s.id, '被撕毁');
-          // 撕毁盟约:双方仇恨 +40
-          s.hatred[allyId] = (s.hatred[allyId] || 0) + 40;
-          allyObj.hatred[s.id] = (allyObj.hatred[s.id] || 0) + 40;
-          this.report(turn, 'diplomacy', `${s.name}愤而撕毁与${allyObj.name}盟约,旧怨难消`, s);
+        // 仇恨盟友超过阈值(50,旧30) -> 撕毁
+        if ((s.hatred[allyId] || 0) > 50) {
+          this.breakAllianceWithPenalty(turn, s, allyObj, '旧怨难消');
           continue;
         }
-        // 盟友国力远超自己(>1.8倍) -> 担忧被吞,撕毁
-        if (allyObj.power() > s.power() * 1.8 && Math.random() < 0.4) {
-          s.breakAlliance(turn, allyId, '畏强');
-          if (allyObj) allyObj.breakAlliance(turn, s.id, '被撕毁');
-          // 撕毁盟约:双方仇恨 +40
-          s.hatred[allyId] = (s.hatred[allyId] || 0) + 40;
-          allyObj.hatred[s.id] = (allyObj.hatred[s.id] || 0) + 40;
-          this.report(turn, 'diplomacy', `${s.name}忌惮${allyObj.name}势大,单方面毁约`, s);
+        // 盟友国力远超自己(>2.0倍,旧1.8) -> 担忧被吞,撕毁(概率 0.2,旧 0.4)
+        if (allyObj.power() > s.power() * 2.0 && Math.random() < 0.2) {
+          this.breakAllianceWithPenalty(turn, s, allyObj, '忌惮其势大');
           continue;
         }
       }
@@ -3282,7 +3404,7 @@ class App {
           (owner ? `<br>归属: <span style="color:${owner.bright}">${owner.name}</span> · 民心${Math.floor(owner.morale)}%` : '<br>无主') +
           (c.garrison ? `<br>驻军: ${Math.floor(c.garrison)}` : '') +
           (contest ? `<br>交战: <span style="color:${contest.bright}">${contest.name}</span> (${c.contestTurns}/${CONTEST_TURNS})` : '') +
-          (owner ? `<br><span style="color:#6a8aa8">[点击] 增兵 ${owner.name}</span>` : '');
+          (owner ? `<br><span style="color:#6a8aa8">[单击] 全面增强 ${owner.name} · [双击] 操纵台</span>` : '');
         if (c.owner) this.ui.select(c.owner);
       } else {
         this.renderer.hoverCell = null;
@@ -3290,7 +3412,7 @@ class App {
       }
     };
     this.canvas.onmouseleave = () => { this.renderer.hoverCell = null; tip.style.display = 'none'; };
-    // 点击:为该格归属国增兵(每次 +50)
+    // 点击:为该格归属国全面提升(兵力/粮草/民心/主将统帅)
     this.canvas.onclick = (e) => {
       const rect = this.canvas.getBoundingClientRect();
       const scaleX = this.canvas.width / rect.width;
@@ -3301,12 +3423,198 @@ class App {
       if (!c || !c.owner) return;
       const s = this.states.get(c.owner);
       if (!s || !s.alive) return;
-      const ADD = 2000;
-      s.troops += ADD;
-      c.garrison += ADD;
+      // 各项参数较大幅提升
+      s.troops += 3000;       // 兵力 +3000
+      s.food += 1500;         // 粮草 +1500
+      s.morale = Math.min(100, s.morale + 20);  // 民心 +20(上限100)
+      c.garrison += 2000;     // 该格驻军 +2000
+      // 主将统帅力 +5(增强军事力)
+      const topG = s.topGeneral();
+      if (topG) topG.command = Math.min(100, topG.command + 5);
       c.dirty = true;
       this.ui.select(c.owner);
-      this.flashStatus(`+${ADD} 兵 → ${s.name}`);
+      this.flashStatus(`${s.name} 全面增强:兵+3000 粮+1500 心+20 将+5`);
+    };
+    // 双击:打开该国玩家控制面板
+    this.canvas.ondblclick = (e) => {
+      const rect = this.canvas.getBoundingClientRect();
+      const scaleX = this.canvas.width / rect.width;
+      const scaleY = this.canvas.height / rect.height;
+      const x = Math.floor((e.clientX - rect.left) * scaleX / CELL_SIZE);
+      const y = Math.floor((e.clientY - rect.top) * scaleY / CELL_SIZE);
+      const c = this.grid.get(x, y);
+      if (!c || !c.owner) return;
+      const s = this.states.get(c.owner);
+      if (!s || !s.alive) return;
+      this.openCtrlPanel(s);
+    };
+  }
+  // 玩家控制面板:调整属性/外交
+  openCtrlPanel(s) {
+    const overlay = document.getElementById('ctrlOverlay');
+    const panel = document.getElementById('ctrlPanel');
+    const render = () => {
+      const others = Array.from(this.states.values()).filter(o => o.id !== s.id);
+      panel.innerHTML = `
+        <div class="ctrl-title">
+          <h3 style="color:${s.bright}">${s.name} · 君王操纵台</h3>
+          <span class="ctrl-close" id="ctrlClose">×</span>
+        </div>
+        <div class="ctrl-section">
+          <div class="ctrl-section-title">国力属性</div>
+          <div class="ctrl-row"><span class="label">兵力</span><span class="val" id="v_troops">${Math.floor(s.troops)}</span>
+            <div class="ctrl-btns">
+              <button class="ctrl-btn warn" data-act="troops" data-d="-1000">-1k</button>
+              <button class="ctrl-btn warn" data-act="troops" data-d="-5000">-5k</button>
+              <button class="ctrl-btn good" data-act="troops" data-d="1000">+1k</button>
+              <button class="ctrl-btn good" data-act="troops" data-d="5000">+5k</button>
+            </div>
+          </div>
+          <div class="ctrl-row"><span class="label">粮草</span><span class="val" id="v_food">${Math.floor(s.food)}</span>
+            <div class="ctrl-btns">
+              <button class="ctrl-btn warn" data-act="food" data-d="-500">-500</button>
+              <button class="ctrl-btn good" data-act="food" data-d="500">+500</button>
+              <button class="ctrl-btn good" data-act="food" data-d="2000">+2000</button>
+            </div>
+          </div>
+          <div class="ctrl-row"><span class="label">民心</span><span class="val" id="v_morale">${Math.floor(s.morale)}%</span>
+            <div class="ctrl-btns">
+              <button class="ctrl-btn warn" data-act="morale" data-d="-10">-10</button>
+              <button class="ctrl-btn good" data-act="morale" data-d="10">+10</button>
+              <button class="ctrl-btn good" data-act="morale" data-d="30">+30</button>
+            </div>
+          </div>
+        </div>
+        <div class="ctrl-section">
+          <div class="ctrl-section-title">君王性情(影响AI决策)</div>
+          <div class="ctrl-row"><span class="label">好战</span><span class="val" id="v_war">${s.persona.war}</span>
+            <div class="ctrl-btns">
+              <button class="ctrl-btn" data-act="war" data-d="-10">-10</button>
+              <button class="ctrl-btn" data-act="war" data-d="10">+10</button>
+            </div>
+          </div>
+          <div class="ctrl-row"><span class="label">扩张</span><span class="val" id="v_expand">${s.persona.expand}</span>
+            <div class="ctrl-btns">
+              <button class="ctrl-btn" data-act="expand" data-d="-10">-10</button>
+              <button class="ctrl-btn" data-act="expand" data-d="10">+10</button>
+            </div>
+          </div>
+          <div class="ctrl-row"><span class="label">外交</span><span class="val" id="v_diplo">${s.persona.diplo}</span>
+            <div class="ctrl-btns">
+              <button class="ctrl-btn" data-act="diplo" data-d="-10">-10</button>
+              <button class="ctrl-btn" data-act="diplo" data-d="10">+10</button>
+            </div>
+          </div>
+        </div>
+        <div class="ctrl-section">
+          <div class="ctrl-section-title">外交政策</div>
+          ${others.map(o => {
+            const isAlly = s.allies.has(o.id);
+            const isWar = s.warTargets.has(o.id);
+            const isNeutral = s.neutralWith.has(o.id);
+            const stateText = isAlly ? '<span style="color:#5ac888">盟国</span>' :
+                              isWar ? '<span style="color:#c8323a">交战</span>' :
+                              isNeutral ? '<span style="color:#8a8475">中立</span>' : '<span style="color:#6a8aa8">平和</span>';
+            return `<div class="ctrl-diplo-row">
+              <span class="ctrl-diplo-name" style="color:${o.bright}">${o.name}</span>
+              <span class="ctrl-diplo-state">${stateText}</span>
+              <div class="ctrl-diplo-act">
+                <button class="ctrl-btn good" data-diplo="ally" data-target="${o.id}" ${isAlly?'disabled':''}>结盟</button>
+                <button class="ctrl-btn warn" data-diplo="break" data-target="${o.id}" ${!isAlly?'disabled':''}>撕毁</button>
+                <button class="ctrl-btn warn" data-diplo="war" data-target="${o.id}" ${isWar?'disabled':''}>宣战</button>
+                <button class="ctrl-btn good" data-diplo="peace" data-target="${o.id}" ${!isWar?'disabled':''}>议和</button>
+                <button class="ctrl-btn" data-diplo="neutral" data-target="${o.id}" ${isNeutral?'disabled':''}>中立</button>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div class="ctrl-section">
+          <div class="ctrl-section-title">操作</div>
+          <button class="ctrl-btn warn" data-act="kill" style="width:100%;padding:6px">立即灭亡 ${s.name}(强制)</button>
+        </div>
+      `;
+      // 绑定关闭
+      document.getElementById('ctrlClose').onclick = () => overlay.classList.remove('show');
+      // 绑定属性+/-
+      panel.querySelectorAll('button[data-act]').forEach(btn => {
+        btn.onclick = () => {
+          const act = btn.dataset.act;
+          if (act === 'kill') {
+            const capCell = this.grid.get(s.capital[0], s.capital[1]);
+            if (capCell) {
+              capCell.owner = null; capCell.garrison = 0; capCell.capital = false;
+              capCell.city = false; capCell.fortress = false; capCell.dirty = true;
+            }
+            this.engine.eliminate(s, s);
+            this.flashStatus(`${s.name} 被强制灭亡`);
+            overlay.classList.remove('show');
+            return;
+          }
+          const d = parseInt(btn.dataset.d);
+          if (act === 'troops') s.troops = Math.max(0, s.troops + d);
+          else if (act === 'food') s.food = Math.max(0, s.food + d);
+          else if (act === 'morale') s.morale = Math.max(0, Math.min(100, s.morale + d));
+          else if (act === 'war') s.persona.war = Math.max(0, Math.min(100, s.persona.war + d));
+          else if (act === 'expand') s.persona.expand = Math.max(0, Math.min(100, s.persona.expand + d));
+          else if (act === 'diplo') s.persona.diplo = Math.max(0, Math.min(100, s.persona.diplo + d));
+          render();  // 刷新面板数值
+          this.ui.select(s.id);  // 刷新右侧详情
+        };
+      });
+      // 绑定外交按钮
+      panel.querySelectorAll('button[data-diplo]').forEach(btn => {
+        btn.onclick = () => {
+          const act = btn.dataset.diplo;
+          const targetId = btn.dataset.target;
+          const target = this.states.get(targetId);
+          if (!target) return;
+          if (act === 'ally') {
+            // 结盟:互加盟约(300回合)
+            s.allies.set(targetId, this.engine.turn + 300);
+            target.allies.set(s.id, this.engine.turn + 300);
+            s.neutralWith.delete(targetId);
+            target.neutralWith.delete(s.id);
+            s.warTargets.delete(targetId);
+            target.warTargets.delete(s.id);
+            this.engine.report(this.engine.turn, 'diplomacy', `${s.name}与${target.name}结为盟国(玩家裁定)`, s);
+          } else if (act === 'break') {
+            // 撕毁:玩家主动撕毁(不触发惩罚,因为是玩家操作)
+            s.breakAlliance(this.engine.turn, targetId, '玩家裁定');
+            target.breakAlliance(this.engine.turn, s.id, '被玩家撕毁');
+            this.engine.report(this.engine.turn, 'diplomacy', `${s.name}撕毁与${target.name}的盟约(玩家裁定)`, s);
+          } else if (act === 'war') {
+            // 宣战
+            s.warTargets.add(targetId);
+            s.neutralWith.delete(targetId);
+            target.neutralWith.delete(s.id);
+            s.hatred[targetId] = (s.hatred[targetId] || 0) + 50;
+            this.engine.report(this.engine.turn, 'diplomacy', `${s.name}向${target.name}宣战!(玩家裁定)`, s);
+          } else if (act === 'peace') {
+            // 议和
+            s.warTargets.delete(targetId);
+            target.warTargets.delete(s.id);
+            s.hatred[targetId] = Math.max(0, (s.hatred[targetId] || 0) - 30);
+            this.engine.report(this.engine.turn, 'diplomacy', `${s.name}与${target.name}议和(玩家裁定)`, s);
+          } else if (act === 'neutral') {
+            // 中立:既不结盟也不交战
+            s.neutralWith.add(targetId);
+            target.neutralWith.add(s.id);
+            s.allies.delete(targetId);
+            target.allies.delete(s.id);
+            s.warTargets.delete(targetId);
+            target.warTargets.delete(s.id);
+            this.engine.report(this.engine.turn, 'diplomacy', `${s.name}与${target.name}立约中立(玩家裁定)`, s);
+          }
+          render();
+          this.ui.select(s.id);
+        };
+      });
+    };
+    render();
+    overlay.classList.add('show');
+    // 点击遮罩关闭
+    overlay.onclick = (e) => {
+      if (e.target === overlay) overlay.classList.remove('show');
     };
   }
   // 状态栏短暂提示
